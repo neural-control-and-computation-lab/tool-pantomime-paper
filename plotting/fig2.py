@@ -32,12 +32,11 @@ from mpl_toolkits.mplot3d.art3d import Line3DCollection
 from scipy.stats import pearsonr, spearmanr
 from sklearn.metrics import roc_auc_score
 
-from item_info import ITEM_INFO
-from model import APRAXIA_CUTOFF, FEATURE_NAMES, BlendModel, load_train_data
+from model import APRAXIA_CUTOFF, FEATURE_NAMES, ITEM_INFO, BlendModel, load_train_data
 
 plt.rcParams["font.family"] = "DejaVu Sans"
 
-project_dir = os.path.dirname(os.path.abspath(__file__))
+project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 data_dir = os.path.join(project_dir, "modelinputs")
 figures_dir = os.path.join(project_dir, "figures")
 os.makedirs(figures_dir, exist_ok=True)
@@ -123,7 +122,7 @@ def gradient_line_3d(ax, pts, base_color, lw=2.8):
     p = pts.reshape(-1, 1, 3)
     segs = np.concatenate([p[:-1], p[1:]], axis=1)
     tt = np.linspace(0, 1, len(pts))
-    lc = Line3DCollection(segs, cmap=cmap, norm=Normalize(0, 1), linewidths=lw)
+    lc = Line3DCollection(segs, cmap=cmap, norm=Normalize(0, 1), linewidths=lw, capstyle="round", joinstyle="round", antialiaseds=True)
     lc.set_array(0.5 * (tt[:-1] + tt[1:]))
     ax.add_collection3d(lc)
     return lc
@@ -318,7 +317,7 @@ def draw_traces_portrait(sf):
     ]
 
     gs = sf.add_gridspec(
-        4, 3, left=0.16, right=0.90, top=0.92, bottom=0.047, height_ratios=[0.8, 1.0, 1.0, 1.0], wspace=0.22, hspace=0.28
+        4, 3, left=0.15, right=0.94, top=0.885, bottom=0.047, height_ratios=[0.8, 1.0, 1.0, 1.0], wspace=0.28, hspace=0.28
     )
     ylabels = []
     for j, f in enumerate(data):
@@ -630,8 +629,8 @@ def main():
         fig.savefig(out, dpi=600, bbox_inches="tight", facecolor="white")
         print(f"Saved {out}")
     else:
-        from svg_composer import compose_fig2
-        compose_fig2(fig, sfL, axl, axr, axD, axE, axF, out, dpi=600)
+        from plotting.svg_composer import compose_fig2
+        compose_fig2(fig, sfL, axl, axr, axD, axE, axF, out)
     plt.close(fig)
 
 

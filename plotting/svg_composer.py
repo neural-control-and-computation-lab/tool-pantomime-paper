@@ -16,6 +16,7 @@ import subprocess
 import xml.etree.ElementTree as ET
 
 import matplotlib.pyplot as plt
+import numpy as np
 from PIL import Image
 
 
@@ -32,11 +33,11 @@ for _prefix, _uri in (
 ):
     ET.register_namespace(_prefix, _uri)
 
-PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FIGURES_DIR = os.path.join(PROJECT_DIR, "figures")
 TEMPLATES_DIR = os.path.join(FIGURES_DIR, "templates")
 
-# Default rasterization resolution (38 cm @ 350 DPI ≈ 5236 px wide)
+# Default rasterization resolution (38 cm @ 350 DPI = 5236 px wide)
 EXPORT_DPI = int(os.environ.get("SVG_EXPORT_DPI", "350"))
 
 
@@ -73,29 +74,54 @@ class SubplotToSvgMapper:
         return x0, y0, x1, y1
 
 
-def _render_subplot_png(fig, dpi=600):
-    """Render `fig` to PNG bytes with `bbox_inches='tight'` and return geometry metadata."""
+def _render_and_inject_pixel_matched(fig, root, img_id, export_dpi=EXPORT_DPI, x_override=None, w_override=None):
+    """
+    Render `fig` using 2x supersampled Lanczos downsampling matched 1-to-1 to the
+    exact output pixel grid at `export_dpi`, eliminating non-integer resampling blur
+    between the Matplotlib panel and vector schematic elements.
+    """
+    el = root.find(f'.//*[@id="{img_id}"]')
+    if el is None:
+        raise KeyError(f'Missing <image id="{img_id}"> in SVG template')
+
+    px_mm = 25.4 / float(export_dpi)
+    raw_x = float(el.attrib["x"]) if x_override is None else float(x_override)
+    raw_y = float(el.attrib["y"])
+    raw_w = float(el.attrib["width"]) if w_override is None else float(w_override)
+
+    # Snap image placement & width to exact output pixel boundaries
+    svg_x = round(raw_x / px_mm) * px_mm
+    svg_y = round(raw_y / px_mm) * px_mm
+    target_w = max(1, round(raw_w / px_mm))
+    svg_w = target_w * px_mm
+
+    # Measure tight bounding box on a reference draw pass
     fig.canvas.draw()
     rend = fig.canvas.get_renderer()
     tb = fig.get_tightbbox(rend)
     pad = float(plt.rcParams.get("savefig.pad_inches", 0.1))
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=dpi, bbox_inches="tight", facecolor="white")
-    png_bytes = buf.getvalue()
-    im = Image.open(io.BytesIO(png_bytes))
-    return png_bytes, im.width, im.height, rend, tb, pad
+    full_w_in = tb.width + 2.0 * pad
 
+    # Render at 2x target pixel density, then Lanczos downsample to exact 1x target_w
+    dpi_2x = max(300.0, (2.0 * target_w) / full_w_in)
+    buf_hi = io.BytesIO()
+    fig.savefig(buf_hi, format="png", dpi=dpi_2x, bbox_inches="tight", facecolor="white")
+    im_hi = Image.open(io.BytesIO(buf_hi.getvalue())).convert("RGB")
+    target_h = max(1, round(target_w * (im_hi.height / im_hi.width)))
+    im_exact = im_hi.resize((target_w, target_h), resample=Image.Resampling.LANCZOS)
+    svg_h = target_h * px_mm
 
-def _inject_image(root, img_id, png_bytes, png_w, png_h, x_override=None, w_override=None):
-    """Embed base64 PNG into `<image id=img_id>` while preserving exact 1:1 aspect ratio."""
-    el = root.find(f'.//*[@id="{img_id}"]')
-    if el is None:
-        raise KeyError(f'Missing <image id="{img_id}"> in SVG template')
-    svg_x = float(el.attrib["x"]) if x_override is None else float(x_override)
-    svg_y = float(el.attrib["y"])
-    svg_w = float(el.attrib["width"]) if w_override is None else float(w_override)
-    svg_h = svg_w * (png_h / png_w)
+    buf_out = io.BytesIO()
+    im_exact.save(buf_out, format="PNG", optimize=True)
+    png_bytes = buf_out.getvalue()
+
+    # Re-grab renderer after savefig (savefig temporarily alters figure dpi)
+    fig.canvas.draw()
+    rend = fig.canvas.get_renderer()
+    tb = fig.get_tightbbox(rend)
+
     el.attrib["x"] = f"{svg_x:.6f}"
+    el.attrib["y"] = f"{svg_y:.6f}"
     el.attrib["width"] = f"{svg_w:.6f}"
     el.attrib["height"] = f"{svg_h:.6f}"
     data_uri = "data:image/png;base64," + base64.b64encode(png_bytes).decode("ascii")
@@ -105,7 +131,8 @@ def _inject_image(root, img_id, png_bytes, png_w, png_h, x_override=None, w_over
             el.attrib[k] = data_uri
     else:
         el.attrib[f"{{{XLINK_NS}}}href"] = data_uri
-    return svg_x, svg_y, svg_w, svg_h
+
+    return png_bytes, rend, tb, pad, svg_x, svg_y, svg_w, svg_h
 
 
 def _set_tspan_text(root, tspan_id, new_text):
@@ -127,41 +154,99 @@ def _set_two_line_label_y(text_el, y_mid, line_gap=6.17361):
         tspans[1].attrib["y"] = f"{y2:.5f}"
 
 
-def _update_canvas_height(root, bg_rect_id, view_w, new_h, unit="mm"):
-    """Adjust SVG height, viewBox, and background rectangle to match panel aspect ratio."""
+def _update_canvas_height(root, bg_rect_id, view_w, new_h, unit="mm", export_dpi=EXPORT_DPI):
+    """Adjust SVG height, viewBox, and background rectangle snapped to integer output pixels."""
+    px_mm = 25.4 / float(export_dpi)
+    snapped_w = round(view_w / px_mm) * px_mm
+    snapped_h = round(new_h / px_mm) * px_mm
     if unit == "cm":
-        root.attrib["height"] = f"{new_h / 10.0:.4f}cm"
+        root.attrib["width"] = f"{snapped_w / 10.0:.6f}cm"
+        root.attrib["height"] = f"{snapped_h / 10.0:.6f}cm"
     else:
-        root.attrib["height"] = f"{new_h:.4f}mm"
-    root.attrib["viewBox"] = f"0 0 {view_w:g} {new_h:.4f}"
+        root.attrib["width"] = f"{snapped_w:.6f}mm"
+        root.attrib["height"] = f"{snapped_h:.6f}mm"
+    root.attrib["viewBox"] = f"0 0 {view_w:g} {snapped_h:.4f}"
     bg = root.find(f'.//*[@id="{bg_rect_id}"]')
     if bg is not None:
-        bg.attrib["height"] = f"{new_h:.4f}"
+        bg.attrib["x"] = "0"
+        bg.attrib["y"] = "0"
+        bg.attrib["width"] = f"{view_w:g}"
+        bg.attrib["height"] = f"{snapped_h:.4f}"
+        bg.attrib["style"] = "fill:#ffffff;fill-opacity:1;stroke:none"
+
+
+def _normalize_svg_markers(root):
+    """Ensure Inkscape marker strokes use unitless user units so arrowheads do not scale with export DPI."""
+    for mk in root.iter(f"{{{SVG_NS}}}marker"):
+        for p in mk.iter(f"{{{SVG_NS}}}path"):
+            st = p.attrib.get("style", "")
+            if "stroke-width:1pt" in st:
+                p.attrib["style"] = st.replace("stroke-width:1pt", "stroke-width:1.33333")
+
+
+def _flatten_png_to_opaque_rgb(png_path):
+    """Composite any semi-transparent edge pixels over pure white (#ffffff) and save as 24-bit RGB."""
+    Image.MAX_IMAGE_PIXELS = None
+    im = Image.open(png_path)
+    if im.mode == "RGB":
+        return
+    im = im.convert("RGBA")
+    arr = np.array(im, dtype=np.float32)
+    alpha = arr[..., 3:4] / 255.0
+    rgb = np.clip(arr[..., :3] * alpha + 255.0 * (1.0 - alpha), 0, 255).round().astype(np.uint8)
+    Image.fromarray(rgb, mode="RGB").save(png_path, format="PNG")
 
 
 def _write_svg_and_png(tree, svg_out, png_out, fallback_png_bytes=None, dpi=EXPORT_DPI):
+    _normalize_svg_markers(tree.getroot())
     tree.write(svg_out, encoding="utf-8", xml_declaration=True)
     if shutil.which("rsvg-convert"):
         subprocess.run(
-            ["rsvg-convert", "-d", str(dpi), "-p", str(dpi), svg_out, "-o", png_out],
+            [
+                "rsvg-convert",
+                "--background-color=white",
+                "-u",
+                "-d",
+                str(dpi),
+                "-p",
+                str(dpi),
+                svg_out,
+                "-o",
+                png_out,
+            ],
             check=True,
         )
+        _flatten_png_to_opaque_rgb(png_out)
     elif shutil.which("inkscape"):
         subprocess.run(
-            ["inkscape", svg_out, f"--export-dpi={dpi}", f"--export-filename={png_out}"],
+            [
+                "inkscape",
+                svg_out,
+                "--export-background=#ffffff",
+                "--export-background-opacity=1.0",
+                f"--export-dpi={dpi}",
+                f"--export-filename={png_out}",
+            ],
             check=True,
         )
-    elif fallback_png_bytes is not None:
-        with open(png_out, "wb") as f:
-            f.write(fallback_png_bytes)
-        print(
-            f"Note: Wrote full composite {svg_out}; neither rsvg-convert nor inkscape was found on PATH, "
-            f"so {png_out} was saved with data panels only (install librsvg or Inkscape for full PNG rasterization)."
-        )
+        _flatten_png_to_opaque_rgb(png_out)
     else:
-        raise RuntimeError(
-            f"Wrote {svg_out}, but neither rsvg-convert nor inkscape was found on PATH to export {png_out}."
-        )
+        try:
+            import resvg_py
+
+            with open(svg_out, "r", encoding="utf-8") as f_svg:
+                svg_str = f_svg.read()
+            png_bytes = resvg_py.svg_to_bytes(svg_string=svg_str, dpi=dpi, background="#ffffff")
+            with open(png_out, "wb") as f_png:
+                f_png.write(png_bytes)
+            _flatten_png_to_opaque_rgb(png_out)
+        except Exception:
+            if fallback_png_bytes is not None:
+                with open(png_out, "wb") as f:
+                    f.write(fallback_png_bytes)
+                _flatten_png_to_opaque_rgb(png_out)
+            else:
+                raise
 
 
 def _move_svg_text_y(root, tid, y_val, x_val=None):
@@ -191,26 +276,29 @@ def _scale_family_label(tel, fs_px=5.35):
 # ============================================================================
 # FIGURE 1
 # ============================================================================
-def compose_fig1(fig, out_png, dpi=600):
-    png_bytes, pw, ph, _, _, _ = _render_subplot_png(fig, dpi=dpi)
+def compose_fig1(fig, out_png, dpi=EXPORT_DPI):
     tree = ET.parse(os.path.join(TEMPLATES_DIR, "figure1.svg"))
     root = tree.getroot()
-    _inject_image(root, "image1-7", png_bytes, pw, ph)
+    png_bytes, _, _, _, _, sy, _, sh = _render_and_inject_pixel_matched(fig, root, "image1-7", export_dpi=dpi)
+    _update_canvas_height(root, "rect10", 380, max(380.0, sy + sh + 3.0), unit="cm", export_dpi=dpi)
+    for tid in ("text1-7", "text1-7-5", "text1-7-5-1"):
+        _move_svg_text_y(root, tid, 110.2)
     out_svg = os.path.join(FIGURES_DIR, "figure1.svg")
-    _write_svg_and_png(tree, out_svg, out_png, fallback_png_bytes=png_bytes)
+    _write_svg_and_png(tree, out_svg, out_png, fallback_png_bytes=png_bytes, dpi=dpi)
     print(f"Saved {out_svg} and {out_png}")
 
 
 # ============================================================================
 # FIGURE 2
 # ============================================================================
-def compose_fig2(fig, sfL, axl, axr, axD, axE, axF, out_png, dpi=600):
-    png_bytes, pw, ph, rend, tb, pad = _render_subplot_png(fig, dpi=dpi)
+def compose_fig2(fig, sfL, axl, axr, axD, axE, axF, out_png, dpi=EXPORT_DPI):
     tree = ET.parse(os.path.join(TEMPLATES_DIR, "figure2.svg"))
     root = tree.getroot()
-    sx, sy, sw, sh = _inject_image(root, "image1-3", png_bytes, pw, ph)
+    png_bytes, rend, tb, pad, sx, sy, sw, sh = _render_and_inject_pixel_matched(
+        fig, root, "image1-3", export_dpi=dpi, x_override=0.0, w_override=380.0
+    )
     new_total_h = max(420.0, sy + sh + 3.0)
-    _update_canvas_height(root, "rect1", 380, new_total_h, unit="cm")
+    _update_canvas_height(root, "rect1", 380, new_total_h, unit="cm", export_dpi=dpi)
     mp = SubplotToSvgMapper(fig, rend, tb, pad, sx, sy, sw, sh)
 
     # 1. Ensure Panel 2A pipeline labels match the 46-feature equal-weight blend
@@ -223,7 +311,7 @@ def compose_fig2(fig, sfL, axl, axr, axD, axE, axF, out_png, dpi=600):
     _set_tspan_text(root, "tspan6-1", "Without Apraxia")
     _set_tspan_text(root, "tspan6-1-2", "With Apraxia")
 
-    # 1b. Align vector 3-line trace headers over the 3D trajectory subplots
+    # 1b. Align vector 3-line trace headers cleanly below 'Item: Corkscrew' and above 3D axes
     axes_3d = [a for a in sfL.axes if getattr(a, "name", "") == "3d"]
     if len(axes_3d) == 3:
         t_boxes = []
@@ -232,17 +320,18 @@ def compose_fig2(fig, sfL, axl, axr, axD, axE, axF, out_png, dpi=600):
             tx0, ty1 = mp.disp_to_svg(bb.x0, bb.y0)
             tx1, ty0 = mp.disp_to_svg(bb.x1, bb.y1)
             t_boxes.append((tx0, ty0, tx1, ty1))
+        base_y1 = 143.0
         r8 = root.find('.//*[@id="rect8"]')
         if r8 is not None:
-            mx0 = min(b[0] for b in t_boxes) - 2.0
-            my0 = min(b[1] for b in t_boxes) - 1.5
-            mx1 = max(b[2] for b in t_boxes) + 2.0
-            my1 = max(b[3] for b in t_boxes) + 1.5
+            mx0 = min(b[0] for b in t_boxes) - 3.0
+            my0 = min(base_y1 - 5.0, min(b[1] for b in t_boxes) - 1.5)
+            mx1 = max(b[2] for b in t_boxes) + 3.0
+            my1 = max(b[3] for b in t_boxes) + 1.2
             r8.attrib["x"] = f"{mx0:.5f}"
             r8.attrib["y"] = f"{my0:.5f}"
             r8.attrib["width"] = f"{mx1 - mx0:.5f}"
             r8.attrib["height"] = f"{my1 - my0:.5f}"
-        base_y1 = max(b[3] for b in t_boxes) - 17.0
+            r8.attrib["style"] = "fill:#ffffff;fill-opacity:1;stroke:none"
         for tid, a3 in zip(("text6", "text6-6", "text6-6-1"), axes_3d):
             b3 = mp.ax_box_svg(a3, tight=False)
             xc = 0.5 * (b3[0] + b3[2])
@@ -253,7 +342,9 @@ def compose_fig2(fig, sfL, axl, axr, axD, axE, axF, out_png, dpi=600):
                 tsp = [c for c in tel if c.tag.endswith("tspan")]
                 for idx_t, ts in enumerate(tsp):
                     ts.attrib["x"] = f"{xc:.5f}"
-                    ts.attrib["y"] = f"{base_y1 + idx_t * 8.2:.5f}"
+                    ts.attrib["y"] = f"{base_y1 + idx_t * 7.6:.5f}"
+                    if idx_t == 0 and "5.64444px" in ts.attrib.get("style", ""):
+                        ts.attrib["style"] = ts.attrib["style"].replace("5.64444px", "5.25000px")
 
     # 2. Align Mean / SD headers cleanly over axl and axr centers
     axl_x0, axl_y0, axl_x1, _ = mp.ax_box_svg(axl, tight=False)
@@ -264,6 +355,7 @@ def compose_fig2(fig, sfL, axl, axr, axD, axE, axF, out_png, dpi=600):
         r86.attrib["y"] = f"{axl_y0 - 12.0:.5f}"
         r86.attrib["width"] = f"{(axr_x1 - axl_x0) + 8.0:.5f}"
         r86.attrib["height"] = "11.40000"
+        r86.attrib["style"] = "fill:#ffffff;fill-opacity:1;stroke:none"
     for rid, x0, y0, x1 in (
         ("rect8-5", axl_x0, axl_y0, axl_x1),
         ("rect8-5-0", axr_x0, axr_y0, axr_x1),
@@ -271,9 +363,10 @@ def compose_fig2(fig, sfL, axl, axr, axD, axE, axF, out_png, dpi=600):
         rm = root.find(f'.//*[@id="{rid}"]')
         if rm is not None:
             rm.attrib["x"] = f"{x0 - 2.0:.5f}"
-            rm.attrib["y"] = f"{y0 - 8.0:.5f}"
+            rm.attrib["y"] = f"{y0 - 9.0:.5f}"
             rm.attrib["width"] = f"{(x1 - x0) + 4.0:.5f}"
-            rm.attrib["height"] = "7.50000"
+            rm.attrib["height"] = "8.50000"
+            rm.attrib["style"] = "fill:#ffffff;fill-opacity:1;stroke:none"
 
     def _center_svg_header(tid, xc, yc):
         tel = root.find(f'.//*[@id="{tid}"]')
@@ -300,8 +393,8 @@ def compose_fig2(fig, sfL, axl, axr, axD, axE, axF, out_png, dpi=600):
                 .replace("text-anchor:start", "text-anchor:middle")
             )
 
-    _center_svg_header("text6-6-1-5", 0.5 * (axl_x0 + axl_x1), axl_y0 - 1.8)
-    _center_svg_header("text6-6-1-5-2", 0.5 * (axr_x0 + axr_x1), axr_y0 - 1.8)
+    _center_svg_header("text6-6-1-5", 0.5 * (axl_x0 + axl_x1), axl_y0 - 3.0)
+    _center_svg_header("text6-6-1-5-2", 0.5 * (axr_x0 + axr_x1), axr_y0 - 3.0)
 
     # 3. Position right-hand kinematic family brackets across the 46 features
     x_bar = axr_x1 + 1.8
@@ -313,8 +406,7 @@ def compose_fig2(fig, sfL, axl, axr, axD, axE, axF, out_png, dpi=600):
     _, ap_y1 = mp.data_to_svg(axr, 0, 31.35)
     _, at_y0 = mp.data_to_svg(axr, 0, 31.65)
     _, at_y1 = mp.data_to_svg(axr, 0, 44.35)
-    _, mt_y0 = mp.data_to_svg(axr, 0, 44.65)
-    _, mt_y1 = mp.data_to_svg(axr, 0, 45.35)
+    _, mt_y_mid = mp.data_to_svg(axr, 0, 45.0)
 
     p_hp = root.find('.//*[@id="path17-3-1-4"]')
     p_ap = root.find('.//*[@id="path17-3-1-4-0"]')
@@ -335,7 +427,7 @@ def compose_fig2(fig, sfL, axl, axr, axD, axE, axF, out_png, dpi=600):
             ts.attrib["x"] = f"{x_txt:.5f}"
         _set_two_line_label_y(tel, y_mid, line_gap=6.17)
 
-    # Add 4th kinematic family bracket ('Motion-specific', row 45)
+    # Add 4th kinematic family bracket ('Motion-specific', row 45) symmetrically centered
     layer = [c for c in root if c.tag.endswith("g")][0]
     ET.SubElement(
         layer,
@@ -343,7 +435,7 @@ def compose_fig2(fig, sfL, axl, axr, axD, axE, axF, out_png, dpi=600):
         {
             "id": "path17-motion",
             "style": "fill:#7a7a84;fill-opacity:1;stroke:#7a7a84;stroke-width:0.8;stroke-miterlimit:6;stroke-dasharray:none;stroke-opacity:1",
-            "d": f"m {x_bar:.5f},{mt_y0:.5f} v {max(mt_y1 - mt_y0, 2.2):.5f}",
+            "d": f"m {x_bar:.5f},{mt_y_mid - 1.0:.5f} v 2.00000",
         },
     )
     t_mt = copy.deepcopy(root.find('.//*[@id="text9"]'))
@@ -359,15 +451,15 @@ def compose_fig2(fig, sfL, axl, axr, axD, axE, axF, out_png, dpi=600):
     t_mt.attrib["x"] = f"{x_txt:.5f}"
     for ts in mt_tspans:
         ts.attrib["x"] = f"{x_txt:.5f}"
-    _set_two_line_label_y(t_mt, 0.5 * (mt_y0 + mt_y1) + 1.8, line_gap=5.8)
+    _set_two_line_label_y(t_mt, mt_y_mid + 0.5, line_gap=5.4)
     layer.append(t_mt)
 
     # 4. Align Panel E, F, G headers and r / AUC legend cleanly to bottom-row axes
     bD_w = mp.ax_box_svg(axD, tight=False)
     bF_w = mp.ax_box_svg(axF, tight=False)
-    _move_svg_text_y(root, "text1-7-2-1", bD_w[1] - 4.5)
-    _move_svg_text_y(root, "text1-7-2-1-2", bD_w[1] - 4.5)
-    _move_svg_text_y(root, "text1-7-2-1-2-4", bF_w[1] - 4.5)
+    _move_svg_text_y(root, "text1-7-2-1", bD_w[1] - 6.0)
+    _move_svg_text_y(root, "text1-7-2-1-2", bD_w[1] - 6.0)
+    _move_svg_text_y(root, "text1-7-2-1-2-4", bF_w[1] - 6.2)
 
     eE_w = mp.ax_box_svg(axE, tight=False)
     eE_t = mp.ax_box_svg(axE, tight=True)
@@ -378,21 +470,21 @@ def compose_fig2(fig, sfL, axl, axr, axD, axE, axF, out_png, dpi=600):
         g16.attrib["transform"] = f"translate({cx - 334.7:.5f},{top_y - 308.93869:.5f})"
 
     out_svg = os.path.join(FIGURES_DIR, "figure2.svg")
-    _write_svg_and_png(tree, out_svg, out_png, fallback_png_bytes=png_bytes)
+    _write_svg_and_png(tree, out_svg, out_png, fallback_png_bytes=png_bytes, dpi=dpi)
     print(f"Saved {out_svg} and {out_png}")
 
 
 # ============================================================================
 # FIGURE 3
 # ============================================================================
-def compose_fig3(fig, axA, axP, axM, axB, axC, out_png, dpi=600):
-    png_bytes, pw, ph, rend, tb, pad = _render_subplot_png(fig, dpi=dpi)
+def compose_fig3(fig, axA, axP, axM, axB, axC, out_png, dpi=EXPORT_DPI):
     tree = ET.parse(os.path.join(TEMPLATES_DIR, "figure3.svg"))
     root = tree.getroot()
-
-    sx, sy, sw, sh = _inject_image(root, "image1-5", png_bytes, pw, ph, x_override=2.5, w_override=380.0)
+    png_bytes, rend, tb, pad, sx, sy, sw, sh = _render_and_inject_pixel_matched(
+        fig, root, "image1-5", export_dpi=dpi, x_override=2.5, w_override=380.0
+    )
     new_total_h = sy + sh + 3.5
-    _update_canvas_height(root, "rect1", 385, new_total_h, unit="mm")
+    _update_canvas_height(root, "rect1", 385, new_total_h, unit="mm", export_dpi=dpi)
     mp = SubplotToSvgMapper(fig, rend, tb, pad, sx, sy, sw, sh)
 
     # 1. Align Panel 3A pipeline text with dashed container left edge
@@ -404,7 +496,7 @@ def compose_fig3(fig, axA, axP, axM, axB, axC, out_png, dpi=600):
     _set_tspan_text(root, "tspan87-7-8-2-7-6", "7 control + 34 stroke")
     t_sub = root.find('.//*[@id="text11-9-8-8-5-1-8-7-4-6-4"]')
     if t_sub is not None:
-        x_left = f"{284.5 / 0.96302773:.5f}"
+        x_left = f"{284.4 / 0.96302773:.5f}"
         t_sub.attrib["x"] = x_left
         t_sub.attrib["style"] = t_sub.attrib.get("style", "") + ";text-align:start;text-anchor:start"
         for ts in t_sub:
@@ -423,11 +515,11 @@ def compose_fig3(fig, axA, axP, axM, axB, axC, out_png, dpi=600):
     bB_t = mp.ax_box_svg(axB, tight=True)
     bC_t = mp.ax_box_svg(axC, tight=True)
 
-    _move_svg_text_y(root, "text1-7-0", 123.30965, bA_t[0])
-    _move_svg_text_y(root, "text1-7-0-2", 123.39575, bP_t[0])
-    _move_svg_text_y(root, "text1-7-0-2-4", 123.30965, min(bC_t[0], 251.24417))
-    _move_svg_text_y(root, "text1-7-0-2-9", bM_w[1] - 4.2, bP_t[0])
-    _move_svg_text_y(root, "text1-7-0-2-4-3", bB_t[1] - 4.2, bA_t[0])
+    _move_svg_text_y(root, "text1-7-0", 121.20, bA_t[0])
+    _move_svg_text_y(root, "text1-7-0-2", 121.20, bP_t[0])
+    _move_svg_text_y(root, "text1-7-0-2-4", 121.20, min(bC_t[0], 251.24417))
+    _move_svg_text_y(root, "text1-7-0-2-9", bM_w[1] - 6.2, bP_t[0])
+    _move_svg_text_y(root, "text1-7-0-2-4-3", bB_t[1] - 5.2, bA_t[0])
 
     g16 = root.find('.//*[@id="g16"]')
     if g16 is not None:
@@ -436,21 +528,21 @@ def compose_fig3(fig, axA, axP, axM, axB, axC, out_png, dpi=600):
         g16.attrib["transform"] = f"translate({cx - 334.7:.5f},{top_y - 308.93869:.5f})"
 
     out_svg = os.path.join(FIGURES_DIR, "figure3.svg")
-    _write_svg_and_png(tree, out_svg, out_png, fallback_png_bytes=png_bytes)
+    _write_svg_and_png(tree, out_svg, out_png, fallback_png_bytes=png_bytes, dpi=dpi)
     print(f"Saved {out_svg} and {out_png}")
 
 
 # ============================================================================
 # FIGURE 4
 # ============================================================================
-def compose_fig4(fig, axG, axH, axD, axE, axF, out_png, dpi=600):
-    png_bytes, pw, ph, rend, tb, pad = _render_subplot_png(fig, dpi=dpi)
+def compose_fig4(fig, axG, axH, axD, axE, axF, out_png, dpi=EXPORT_DPI):
     tree = ET.parse(os.path.join(TEMPLATES_DIR, "figure4.svg"))
     root = tree.getroot()
-
-    sx, sy, sw, sh = _inject_image(root, "image1-2", png_bytes, pw, ph, x_override=2.5, w_override=300.0)
+    png_bytes, rend, tb, pad, sx, sy, sw, sh = _render_and_inject_pixel_matched(
+        fig, root, "image1-2", export_dpi=dpi, x_override=2.5, w_override=300.0
+    )
     new_total_h = max(450.0, sy + sh + 2.5)
-    _update_canvas_height(root, "rect4", 305, new_total_h, unit="cm")
+    _update_canvas_height(root, "rect4", 305, new_total_h, unit="cm", export_dpi=dpi)
     mp = SubplotToSvgMapper(fig, rend, tb, pad, sx, sy, sw, sh)
 
     # 1. Ensure Panel 4A pipeline text and Panel 4B/4C legends match the 46-feature models
@@ -497,19 +589,18 @@ def compose_fig4(fig, axG, axH, axD, axE, axF, out_png, dpi=600):
     _, ap_y1 = mp.data_to_svg(axG, 0, 13.65)
     _, at_y0 = mp.data_to_svg(axG, 0, 13.35)
     _, at_y1 = mp.data_to_svg(axG, 0, 0.65)
-    _, mt_y0 = mp.data_to_svg(axG, 0, 0.38)
-    _, mt_y1 = mp.data_to_svg(axG, 0, -0.38)
+    _, mt_y_mid = mp.data_to_svg(axG, 0, 0.0)
 
     root.find('.//*[@id="path17-3-1-4-6"]').attrib["d"] = f"M {x_bar:.5f},{hp_y0:.5f} V {hp_y1:.5f}"
     root.find('.//*[@id="path17-3-1-4-0-1"]').attrib["d"] = f"m {x_bar:.5f},{ap_y0:.5f} v {ap_y1 - ap_y0:.5f}"
     root.find('.//*[@id="path17-3-1-0"]').attrib["d"] = f"m {x_bar:.5f},{at_y0:.5f} v {at_y1 - at_y0:.5f}"
-    root.find('.//*[@id="path17-3-1-0-7"]').attrib["d"] = f"m {x_bar:.5f},{mt_y0:.5f} v {max(mt_y1 - mt_y0, 2.2):.5f}"
+    root.find('.//*[@id="path17-3-1-0-7"]').attrib["d"] = f"m {x_bar:.5f},{mt_y_mid - 1.0:.5f} v 2.00000"
 
     for tid, y_mid, gap in (
         ("text9-9-1", 0.5 * (hp_y0 + hp_y1), 6.4),
         ("text9-8-9", 0.5 * (ap_y0 + ap_y1), 6.4),
         ("text9-95", 0.5 * (at_y0 + at_y1) - 1.0, 6.4),
-        ("text9-95-2", 0.5 * (mt_y0 + mt_y1) + 1.6, 5.6),
+        ("text9-95-2", mt_y_mid + 0.4, 5.4),
     ):
         tel = root.find(f'.//*[@id="{tid}"]')
         _scale_family_label(tel, 5.2)
@@ -523,9 +614,9 @@ def compose_fig4(fig, axG, axH, axD, axE, axF, out_png, dpi=600):
     bE_w = mp.ax_box_svg(axE, tight=False)
     bE_t = mp.ax_box_svg(axE, tight=True)
     bF_w = mp.ax_box_svg(axF, tight=False)
-    _move_svg_text_y(root, "text1-7-2-1", bD_w[1] - 4.5)
-    _move_svg_text_y(root, "text1-7-2-1-2", bD_w[1] - 4.5)
-    _move_svg_text_y(root, "text1-7-2-1-2-3", bF_w[1] - 4.5)
+    _move_svg_text_y(root, "text1-7-2-1", bD_w[1] - 6.0)
+    _move_svg_text_y(root, "text1-7-2-1-2", bD_w[1] - 6.0)
+    _move_svg_text_y(root, "text1-7-2-1-2-3", bF_w[1] - 6.2)
 
     g16 = root.find('.//*[@id="g16"]')
     if g16 is not None:
@@ -534,5 +625,5 @@ def compose_fig4(fig, axG, axH, axD, axE, axF, out_png, dpi=600):
         g16.attrib["transform"] = f"translate({cx - 334.7:.5f},{top_y - 308.93869:.5f})"
 
     out_svg = os.path.join(FIGURES_DIR, "figure4.svg")
-    _write_svg_and_png(tree, out_svg, out_png, fallback_png_bytes=png_bytes)
+    _write_svg_and_png(tree, out_svg, out_png, fallback_png_bytes=png_bytes, dpi=dpi)
     print(f"Saved {out_svg} and {out_png}")

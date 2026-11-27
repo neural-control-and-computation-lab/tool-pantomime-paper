@@ -1,16 +1,9 @@
-# Byte-compiled / cache files
 __pycache__/
 *.py[cod]
-
-# Virtual environments
+*$py.class
 .venv/
 venv/
-env/
-
-# Editor / OS metadata
 .DS_Store
-.idea/
-.vscode/
-
-# Cached intermediate model outputs (regenerated automatically)
-figures/*.json
+figures/*cache*.json
+docs/figures/
+_site/

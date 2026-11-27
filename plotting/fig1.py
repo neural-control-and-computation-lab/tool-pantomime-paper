@@ -28,10 +28,9 @@ from matplotlib.colors import LinearSegmentedColormap, Normalize
 from matplotlib.lines import Line2D
 from sklearn.metrics import roc_auc_score
 
-from item_info import get_item_name
-from model import APRAXIA_CUTOFF, parse_component_scores
+from model import APRAXIA_CUTOFF, get_item_name, parse_component_scores
 
-PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(PROJECT_DIR, "modelinputs")
 FIGURES_DIR = os.path.join(PROJECT_DIR, "figures")
 os.makedirs(FIGURES_DIR, exist_ok=True)
@@ -110,7 +109,7 @@ def panel_a(ax, rows):
     ax.text(
         0.55,
         APRAXIA_CUTOFF - 0.02,
-        f"Apraxia cutoff ({APRAXIA_CUTOFF})",
+        f"Apraxia cut-off ({APRAXIA_CUTOFF})",
         fontsize=FS_ANNOT,
         ha="left",
         va="top",
@@ -322,7 +321,7 @@ def main():
     tile_y = height / n
     tile_x = tile_y * (fig_h / fig_w)
     hw = 4 * tile_x
-    gap = 0.035
+    gap = 0.042
     total = 2 * hw + gap
     mid = (posA.x1 + posD.x0) / 2
     x0 = mid - total / 2
@@ -333,10 +332,24 @@ def main():
 
     top_y = y0 + height
     fig.text(
-        x0 + hw / 2, top_y + 0.004, "Without apraxia", ha="center", va="bottom", fontsize=FS_HEADER - 2.2, fontweight="bold"
+        x0 + hw / 2,
+        top_y + 0.003,
+        "Without\napraxia",
+        ha="center",
+        va="bottom",
+        fontsize=FS_HEADER - 2.6,
+        fontweight="bold",
+        linespacing=0.92,
     )
     fig.text(
-        x_apr + hw / 2, top_y + 0.004, "With apraxia", ha="center", va="bottom", fontsize=FS_HEADER - 2.2, fontweight="bold"
+        x_apr + hw / 2,
+        top_y + 0.003,
+        "With\napraxia",
+        ha="center",
+        va="bottom",
+        fontsize=FS_HEADER - 2.6,
+        fontweight="bold",
+        linespacing=0.92,
     )
 
     cbar_y = y0 - 0.057
@@ -350,16 +363,19 @@ def main():
         cb.ax.tick_params(labelsize=FS_CBAR)
         cb.outline.set_visible(False)
 
-    sw = 0.013
-    grey_ax = fig.add_axes([x0 - 0.028, cbar_y - 0.0005, sw, sw])
-    grey_ax.add_patch(plt.Rectangle((0, 0), 1, 1, facecolor=grey0, edgecolor="none"))
-    grey_ax.set_xlim(0, 1)
-    grey_ax.set_ylim(0, 1)
-    grey_ax.set_xticks([])
-    grey_ax.set_yticks([])
-    for sp in grey_ax.spines.values():
-        sp.set_visible(False)
-    fig.text(x0 - 0.031, cbar_y + sw / 2, "0", ha="right", va="center", fontsize=FS_CBAR)
+    # Native crisp '0' grey swatches beside both colorbars (matching colorbar height & tick typography)
+    sw_w = 0.012 * (fig_h / fig_w)
+    for x_left in (x0, x_apr):
+        gax = fig.add_axes([x_left - sw_w - 0.009, cbar_y, sw_w, 0.012])
+        gax.add_patch(plt.Rectangle((0, 0), 1, 1, facecolor=grey0, edgecolor="none"))
+        gax.set_xlim(0, 1)
+        gax.set_ylim(0, 1)
+        gax.set_xticks([0.5])
+        gax.set_xticklabels(["0"])
+        gax.set_yticks([])
+        gax.tick_params(axis="x", labelsize=FS_CBAR)
+        for sp in gax.spines.values():
+            sp.set_visible(False)
 
     fig.text(mid, cbar_y - 0.032, "Proportion of Participants", ha="center", va="top", fontsize=FS_AXIS_LABEL, fontweight="bold")
 
@@ -380,8 +396,8 @@ def main():
         fig.savefig(out, dpi=600, bbox_inches="tight", facecolor="white")
         print(f"Saved {out} (600 dpi)")
     else:
-        from svg_composer import compose_fig1
-        compose_fig1(fig, out, dpi=600)
+        from plotting.svg_composer import compose_fig1
+        compose_fig1(fig, out)
     plt.close(fig)
 
 

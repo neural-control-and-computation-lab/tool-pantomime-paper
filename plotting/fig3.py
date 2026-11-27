@@ -34,12 +34,11 @@ from matplotlib.patches import Rectangle
 from scipy.stats import pearsonr, spearmanr
 from sklearn.metrics import roc_auc_score
 
-from item_info import ITEM_INFO
-from model import APRAXIA_CUTOFF, FEATURE_NAMES, BlendModel, load_test_data, load_train_data
+from model import APRAXIA_CUTOFF, FEATURE_NAMES, ITEM_INFO, BlendModel, load_test_data, load_train_data
 
 plt.rcParams["font.family"] = "DejaVu Sans"
 
-project_dir = os.path.dirname(os.path.abspath(__file__))
+project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 data_dir = os.path.join(project_dir, "modelinputs")
 figures_dir = os.path.join(project_dir, "figures")
 os.makedirs(figures_dir, exist_ok=True)
@@ -536,8 +535,8 @@ def main():
         fig.savefig(out, dpi=600, bbox_inches="tight", facecolor="white")
         print(f"Saved {out}")
     else:
-        from svg_composer import compose_fig3
-        compose_fig3(fig, axA, axP, axM, axB, axC, out, dpi=600)
+        from plotting.svg_composer import compose_fig3
+        compose_fig3(fig, axA, axP, axM, axB, axC, out)
     plt.close(fig)
 
 

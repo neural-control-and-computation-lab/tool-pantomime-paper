@@ -28,7 +28,7 @@ from matplotlib.lines import Line2D
 from matplotlib.ticker import MultipleLocator
 
 from model import FEATURE_NAMES, BlendModel, load_all_data
-from plot_fig2 import (
+from plotting.fig2 import (
     DEFAULT_AX_LIM,
     FS_ANNOT,
     FS_AXIS_LABEL,
@@ -51,7 +51,7 @@ from plot_fig2 import (
 
 plt.rcParams["font.family"] = "DejaVu Sans"
 
-project_dir = os.path.dirname(os.path.abspath(__file__))
+project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 data_dir = os.path.join(project_dir, "modelinputs")
 figures_dir = os.path.join(project_dir, "figures")
 os.makedirs(figures_dir, exist_ok=True)
@@ -342,8 +342,8 @@ def main():
         fig.savefig(out, dpi=600, bbox_inches="tight", facecolor="white")
         print(f"Saved {out}")
     else:
-        from svg_composer import compose_fig4
-        compose_fig4(fig, axG, axH, axD, axE, axF, out, dpi=600)
+        from plotting.svg_composer import compose_fig4
+        compose_fig4(fig, axG, axH, axD, axE, axF, out)
     plt.close(fig)
 
     n_ap = sum(1 for p, t in true_means.items() if p.startswith("ST") and t < apraxia_cutoff)
