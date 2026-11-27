@@ -1791,6 +1791,7 @@
     updateAll();
   }
 
+  let _pendingRaf = 0;
   function updateAll() {
     const partPct = Math.round((1 - STATE.blendItemWeight) * 100);
     const itemPct = Math.round(STATE.blendItemWeight * 100);
@@ -1804,45 +1805,63 @@
         ? "41 LOPO folds"
         : "Trained on 41 → 12 unseen";
 
-    const res = evaluateActivePipeline();
-    STATE.lastResult = res;
+    const featIdx = Array.from(STATE.activeFeatures).sort((a, b) => a - b);
+    const itemArr = Array.from(STATE.activeItems).sort((a, b) => a - b);
+    const key = `${STATE.split}|${STATE.alpha}|${featIdx.join(",")}|${itemArr.join(",")}`;
+    const isCached = STATE.pathwayCache.has(key);
 
-    const mPart = computeMetrics(res.partPred, res.trueByPid, STATE.cutoff);
-    const mItem = computeMetrics(res.itemPred, res.trueByPid, STATE.cutoff);
-    const mBlend = computeMetrics(res.blendPred, res.trueByPid, STATE.cutoff);
-    const base = STATE.baselineMetrics[STATE.split];
+    const runRender = () => {
+      const res = evaluateActivePipeline();
+      STATE.lastResult = res;
 
-    document.getElementById("kpi-r").textContent = mBlend.r.toFixed(3);
-    document.getElementById("sub-r").textContent = `Spearman \u03c1 = ${mBlend.rho.toFixed(3)}`;
-    formatDeltaBadge(document.getElementById("delta-r"), mBlend.r, base.r, true, 3);
+      const mPart = computeMetrics(res.partPred, res.trueByPid, STATE.cutoff);
+      const mItem = computeMetrics(res.itemPred, res.trueByPid, STATE.cutoff);
+      const mBlend = computeMetrics(res.blendPred, res.trueByPid, STATE.cutoff);
+      const base = STATE.baselineMetrics[STATE.split];
 
-    document.getElementById("kpi-auc").textContent = mBlend.auc.toFixed(3);
-    document.getElementById("sub-auc").textContent = `${mBlend.tp + mBlend.fn + mBlend.tn + mBlend.fp} stroke patients`;
-    formatDeltaBadge(document.getElementById("delta-auc"), mBlend.auc, base.auc, true, 3);
+      document.getElementById("kpi-r").textContent = mBlend.r.toFixed(3);
+      document.getElementById("sub-r").textContent = `Spearman \u03c1 = ${mBlend.rho.toFixed(3)}`;
+      formatDeltaBadge(document.getElementById("delta-r"), mBlend.r, base.r, true, 3);
 
-    document.getElementById("kpi-mae").textContent = mBlend.mae.toFixed(3);
-    document.getElementById("sub-mae").textContent = `RMSE = ${mBlend.rmse.toFixed(3)}`;
-    formatDeltaBadge(document.getElementById("delta-mae"), mBlend.mae, base.mae, false, 3);
+      document.getElementById("kpi-auc").textContent = mBlend.auc.toFixed(3);
+      document.getElementById("sub-auc").textContent = `${mBlend.tp + mBlend.fn + mBlend.tn + mBlend.fp} stroke patients`;
+      formatDeltaBadge(document.getElementById("delta-auc"), mBlend.auc, base.auc, true, 3);
 
-    document.getElementById("kpi-sens").textContent = mBlend.sens.toFixed(2);
-    document.getElementById("sub-sens").textContent = `${mBlend.tp}/${mBlend.tp + mBlend.fn} with apraxia`;
-    formatDeltaBadge(document.getElementById("delta-sens"), mBlend.sens, base.sens, true, 2);
+      document.getElementById("kpi-mae").textContent = mBlend.mae.toFixed(3);
+      document.getElementById("sub-mae").textContent = `RMSE = ${mBlend.rmse.toFixed(3)}`;
+      formatDeltaBadge(document.getElementById("delta-mae"), mBlend.mae, base.mae, false, 3);
 
-    document.getElementById("kpi-spec").textContent = mBlend.spec.toFixed(2);
-    document.getElementById("sub-spec").textContent = `${mBlend.tn}/${mBlend.tn + mBlend.fp} without apraxia`;
-    formatDeltaBadge(document.getElementById("delta-spec"), mBlend.spec, base.spec, true, 2);
+      document.getElementById("kpi-sens").textContent = mBlend.sens.toFixed(2);
+      document.getElementById("sub-sens").textContent = `${mBlend.tp}/${mBlend.tp + mBlend.fn} with apraxia`;
+      formatDeltaBadge(document.getElementById("delta-sens"), mBlend.sens, base.sens, true, 2);
 
-    document.getElementById("compute-status").textContent =
-      `${STATE.activeFeatures.size}/46 features · ${STATE.activeItems.size}/39 tools · computed in ${res.elapsedMs.toFixed(1)} ms`;
+      document.getElementById("kpi-spec").textContent = mBlend.spec.toFixed(2);
+      document.getElementById("sub-spec").textContent = `${mBlend.tn}/${mBlend.tn + mBlend.fp} without apraxia`;
+      formatDeltaBadge(document.getElementById("delta-spec"), mBlend.spec, base.spec, true, 2);
 
-    renderScatter(res);
-    renderPathwayBars(mPart, mItem, mBlend);
-    renderConfusionAndRoc(mBlend);
-    renderFamilyStackedBar(res);
-    renderFeatureControls(res);
-    renderItemControls();
-    renderParticipantInspector(res);
-    renderAtlas();
+      document.getElementById("compute-status").textContent =
+        `${STATE.activeFeatures.size}/46 features · ${STATE.activeItems.size}/39 tools · computed in ${res.elapsedMs.toFixed(1)} ms`;
+
+      renderScatter(res);
+      renderPathwayBars(mPart, mItem, mBlend);
+      renderConfusionAndRoc(mBlend);
+      renderFamilyStackedBar(res);
+      renderFeatureControls(res);
+      renderItemControls();
+      renderParticipantInspector(res);
+      renderAtlas();
+    };
+
+    if (isCached) {
+      if (_pendingRaf) cancelAnimationFrame(_pendingRaf);
+      runRender();
+    } else {
+      document.getElementById("compute-status").textContent = "Computing cross-validated Ridge folds…";
+      if (_pendingRaf) cancelAnimationFrame(_pendingRaf);
+      _pendingRaf = requestAnimationFrame(() => {
+        _pendingRaf = requestAnimationFrame(runRender);
+      });
+    }
   }
 
   function wireEvents() {
@@ -2004,12 +2023,18 @@
     });
 
     // Atlas controls
-    document.getElementById("btn-atlas-manual-auc").addEventListener("click", () => {
+    const btnManualAuc = document.getElementById("btn-atlas-manual-auc");
+    const btnKinAuc = document.getElementById("btn-atlas-kin-auc");
+    btnManualAuc.addEventListener("click", () => {
       STATE.atlasXMode = "manual_auc";
+      btnManualAuc.classList.add("btn-primary");
+      btnKinAuc.classList.remove("btn-primary");
       renderAtlas();
     });
-    document.getElementById("btn-atlas-kin-auc").addEventListener("click", () => {
+    btnKinAuc.addEventListener("click", () => {
       STATE.atlasXMode = "kinematic_auc";
+      btnKinAuc.classList.add("btn-primary");
+      btnManualAuc.classList.remove("btn-primary");
       renderAtlas();
     });
     document.getElementById("search-atlas").addEventListener("input", (e) => {

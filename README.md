@@ -1,52 +1,56 @@
 # Predicting Clinical Limb Apraxia Scores from Upper-Limb Pantomime Kinematics
 
-**[Interactive Explorer & Live Model Sandbox &rarr;](https://neural-control-and-computation-lab.github.io/tool-pantomime-paper/)**
+**Daanish M. Mulla<sup>1</sup>, Aaron L. Wong<sup>2,3</sup>, Laurel J. Buxbaum<sup>2,3</sup>, & J. Andrew Michaels<sup>1</sup>**  
+<sup>1</sup>*Centre for Vision Research, York University, Toronto, ON, Canada* · <sup>2</sup>*Jefferson Moss Rehabilitation Research Institute &* <sup>3</sup>*Department of Rehabilitation Medicine, Thomas Jefferson University, Philadelphia, PA, USA*
 
-This repository contains the de-identified 100 Hz electromagnetic motion-capture dataset, kinematic feature-extraction and Ridge modelling pipeline, figure scripts, and interactive companion website for *Predicting Clinical Limb Apraxia Scores from Upper-Limb Pantomime Kinematics* (Mulla, Wong, Buxbaum, & Michaels).
+[![Launch Interactive Explorer](https://img.shields.io/badge/Interactive_Explorer-Launch_Live_Model_Sandbox_%E2%86%92-0A1F4D?style=for-the-badge)](https://neural-control-and-computation-lab.github.io/tool-pantomime-paper/)
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-1976D2?style=for-the-badge)](reproduce.py)
+[![License: MIT](https://img.shields.io/badge/License-MIT-2E7D32?style=for-the-badge)](LICENSE)
+
+This repository provides the de-identified 100 Hz electromagnetic motion-capture dataset, kinematic feature-extraction and Ridge modelling pipeline, publication figure scripts, and **live interactive companion website** for *Predicting Clinical Limb Apraxia Scores from Upper-Limb Pantomime Kinematics*.
 
 ---
 
-## Quick Start (Reproduce Everything in Two Commands)
+## Interactive Companion Website & Live Model Sandbox
 
-Requires **Python 3.10+** on Linux, macOS, or Windows (no external system packages required):
+> **[Open the Interactive Explorer (`neural-control-and-computation-lab.github.io/tool-pantomime-paper`) &rarr;](https://neural-control-and-computation-lab.github.io/tool-pantomime-paper/)**
+
+Explore all **1,950 trials**, **53 participants**, **46 scale-free kinematic features**, and **39 everyday tools** directly in your browser—no installation required:
+
+| Interactive Module | What You Can Do Live in the Browser |
+| :--- | :--- |
+| **[1. Combined Model & Feature Sandbox](https://neural-control-and-computation-lab.github.io/tool-pantomime-paper/#sandbox-section)** | Run the exact two-pathway Ridge `BlendModel` live across `N = 53` LOPO, `n = 41` training LOPO, or `n = 12` held-out test participants. Toggle individual kinematic features, motor families, or tool batteries (e.g., *Top 8 Features Only*, *Compact 12-Tool Clinical Screening*, *Hand Posture Only*), drag the **Participant ↔ Item pathway blend slider**, vary $\alpha$, and adjust the `2.52` apraxia cut-off. |
+| **[2. Participant Contribution Inspector](https://neural-control-and-computation-lab.github.io/tool-pantomime-paper/#inspector-section)** | Click any participant on the scatter plot to decompose their predicted score into signed kinematic feature contributions ($\beta_{\text{mean}} z_{\text{mean}} + \beta_{\text{SD}} z_{\text{SD}}$) and per-tool item predictions vs. manual coder ratings. |
+| **[3. 3D Pantomime Kinematics Viewer](https://neural-control-and-computation-lab.github.io/tool-pantomime-paper/#traces-section)** | Rotate 3D wrist, index, and thumb trajectories (*Corkscrew*, *Hammer*, *Lipstick*, *Scissors*) across a healthy control, a stroke patient without apraxia, and a stroke patient with apraxia, with a synchronized play/scrub cursor tracking thumb–index aperture, elbow angle, and wrist speed. |
+| **[4. 39-Tool Battery Atlas & Figures](https://neural-control-and-computation-lab.github.io/tool-pantomime-paper/#atlas-section)** | Compare manual apraxia AUC, cross-validated kinematic AUC, learned reliability weights, and standardized manual coding criteria across all 39 tools, and inspect full-resolution manuscript Figures 1–4. |
+
+[![Model Development and Validation Overview (Figure 2)](figures/fig2.png)](https://neural-control-and-computation-lab.github.io/tool-pantomime-paper/)
+
+---
+
+## Quick Start (Reproduce Everything Locally in Two Commands)
+
+Requires **Python 3.10+** on Linux, macOS, or Windows (no external system libraries required):
 
 ```bash
 pip install -r requirements.txt
 python reproduce.py
 ```
 
-Running `python reproduce.py` extracts all 46 scale-free kinematic features from the raw 100 Hz recordings in `modelinputs/`, prints every statistical table in the manuscript, and renders all four publication figures (`figures/fig1.png`–`fig4.png` at 350 DPI and editable `figures/figure1.svg`–`figure4.svg`).
+Running `python reproduce.py` extracts all 46 scale-free kinematic features from the raw 100 Hz recordings in `modelinputs/`, prints every statistical table in the manuscript, and renders all four composite publication figures (`figures/fig1.png`–`fig4.png` at 350 DPI and editable `figures/figure1.svg`–`figure4.svg`).
 
-### Optional Flags
+### Optional Flags & Standalone Commands
 
 ```bash
 python reproduce.py --stats-only   # Print all manuscript statistical tables without rendering figures
 python reproduce.py --figure 2     # Render a single manuscript figure (1, 2, 3, or 4)
-python reproduce.py --export-web   # Regenerate docs/data/explorer_data.json for the interactive website
+python reproduce.py --export-web   # Regenerate docs/data/explorer_data.json from raw kinematics
 
-# Run the standalone modelling CLI directly:
+# Standalone modelling CLI:
 python model.py                    # Training cohort LOPO cross-validation (n = 41)
 python model.py --test             # Held-out test evaluation (n = 12, trained on n = 41)
 python model.py --all              # Full-cohort LOPO cross-validation (N = 53)
 python model.py --items            # List all 39 tool-use pantomime items and manual coding criteria
-```
-
----
-
-## Interactive Companion Website
-
-Explore the dataset and combined model interactively in your browser at **[neural-control-and-computation-lab.github.io/tool-pantomime-paper](https://neural-control-and-computation-lab.github.io/tool-pantomime-paper/)**:
-
-- **Live Feature & Tool Ablation Sandbox:** Toggle any subset of the 46 kinematic features, 4 motor families, or 39 everyday tools, adjust the participant/item pathway blend weight, Ridge regularization ($\alpha$), or diagnostic apraxia cut-off (`2.52`), and recompute Leave-One-Participant-Out cross-validation live in the browser.
-- **Individual Participant Inspector:** Click any participant to inspect signed kinematic feature contributions ($\beta_{\text{mean}} z_{\text{mean}} + \beta_{\text{SD}} z_{\text{SD}}$) and per-tool item predictions vs. manual ratings.
-- **3D Pantomime Kinematics Viewer:** Rotate 3D motion-capture trajectories and scrub synchronized grasp aperture, elbow angle, and wrist speed traces across representative tools.
-- **39-Tool Battery Atlas:** Compare standalone manual apraxia AUC, cross-validated kinematic AUC, learned reliability weights, and manual coding criteria across all 39 tools.
-
-To preview the website locally:
-
-```bash
-python3 -m http.server 8000
-# Open http://localhost:8000/docs/
 ```
 
 ---
