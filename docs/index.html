@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Automated Kinematic Scoring of Tool-Use Pantomime in Limb Apraxia — Interactive Explorer</title>
+  <title>Automated kinematic scoring of tool-use pantomime gestures in limb apraxia</title>
   <meta
     name="description"
-    content="Interactive companion explorer for automated kinematic scoring of tool-use pantomime gestures in limb apraxia: test kinematic feature subsets, tool batteries, pathway blending, participant contributions, and 3D motion-capture trajectories live in the browser."
+    content="Interactive companion to 'Automated kinematic scoring of tool-use pantomime gestures in limb apraxia' (Mulla, Buxbaum, Wong, & Michaels): explore 3D pantomime kinematics, test feature subsets and compact tool batteries in the combined ridge model, and inspect individual patient predictions."
   />
   <meta property="og:type" content="website" />
-  <meta property="og:title" content="Predicting Clinical Limb Apraxia Scores from Upper-Limb Pantomime Kinematics — Interactive Explorer" />
-  <meta property="og:description" content="Explore 1,950 motion-capture pantomime trials across 53 participants and 39 tools: toggle kinematic features, test compact clinical screening batteries, inspect individual patient decompositions, and rotate 3D trajectories live in your browser." />
+  <meta property="og:title" content="Automated kinematic scoring of tool-use pantomime gestures in limb apraxia" />
+  <meta property="og:description" content="Interactive companion explorer: 3D pantomime kinematics, live two-pathway ridge model sandbox across 46 features and 39 tools, and participant-level score decompositions." />
   <meta property="og:url" content="https://neural-control-and-computation-lab.github.io/tool-pantomime-paper/" />
   <meta property="og:image" content="https://neural-control-and-computation-lab.github.io/tool-pantomime-paper/figures/fig2.png" />
   <meta name="twitter:card" content="summary_large_image" />
@@ -25,29 +25,33 @@
 <body>
   <header class="site-header" id="top">
     <div class="container">
-      <div class="eyebrow">Interactive Companion &amp; Live Model Sandbox</div>
-      <h1>Predicting Clinical Limb Apraxia Scores from Upper-Limb Pantomime Kinematics</h1>
+      <h1>Automated kinematic scoring of tool-use pantomime gestures in limb apraxia</h1>
       <p class="authors-line">
-        Daanish M. Mulla<sup>1</sup>, Aaron L. Wong<sup>2,3</sup>, Laurel J. Buxbaum<sup>2,3</sup>, &amp; J. Andrew Michaels<sup>1</sup>
+        Daanish M. Mulla<sup>1</sup>, Laurel J. Buxbaum<sup>2,3</sup>, Aaron L. Wong<sup>2,3</sup>, &amp; Jonathan A. Michaels<sup>1,4,5</sup>
       </p>
-      <p class="affils-line">
-        <sup>1</sup>Centre for Vision Research, York University, Toronto, ON, Canada &middot;
-        <sup>2</sup>Jefferson Moss Rehabilitation Research Institute &amp;
-        <sup>3</sup>Department of Rehabilitation Medicine, Thomas Jefferson University, Philadelphia, PA, USA
-      </p>
+      <details class="affils-details">
+        <summary>York University &amp; Jefferson Moss Rehabilitation Research Institute &middot; Author affiliations</summary>
+        <ol class="affils-list">
+          <li>School of Kinesiology &amp; Health Science, York University, Toronto, ON, Canada</li>
+          <li>Jefferson Moss Rehabilitation Research Institute, Thomas Jefferson University, Philadelphia, PA, USA</li>
+          <li>Department of Rehabilitation Medicine, Thomas Jefferson University, Philadelphia, PA, USA</li>
+          <li>Centre for Vision Research, York University, Toronto, ON, Canada</li>
+          <li>Centre for Integrative and Applied Neuroscience, York University, Toronto, ON, Canada</li>
+        </ol>
+      </details>
       <p class="lead-summary">
-        Across <strong>53 participants</strong> (10 healthy controls, 26 left-hemisphere stroke patients without apraxia, and 17 stroke patients with apraxia; <strong>1,950 valid trials</strong> across <strong>39 everyday tools</strong>), a two-pathway <em>L</em><sub>2</sub>-regularized Ridge model blending participant-level movement profiles with reliability-weighted item-level predictions reproduces expert praxis ratings (<em>r</em> = 0.870, stroke AUC = 0.946 across all 53 participants; <em>r</em> = 0.776, AUC = 0.889 on 12 held-out test participants). Use the live browser model below to toggle kinematic features, test shorter clinical tool batteries, adjust pathway weights, and inspect individual patient decompositions in real time.
+        Clinical assessment of limb apraxia after stroke relies on slow, offline video coding of tool-use pantomime gestures. Across <strong>53 participants</strong> and <strong>39 everyday tools</strong> (1,950 trials), we show that 3D upper-limb kinematics and a simple two-pathway ridge model accurately reproduce expert praxis scores (<em>r</em> = 0.87, AUC = 0.95) and generalize to unseen patients.
       </p>
       <div class="header-actions">
-        <a href="#sandbox-section" class="btn btn-primary" id="cta-open-sandbox">Launch Feature &amp; Model Sandbox</a>
-        <a href="#traces-section" class="btn" id="cta-open-3d">Explore 3D Pantomime Trajectories</a>
+        <a href="#sandbox-section" class="btn btn-primary" id="cta-open-sandbox">Explore the Final Model</a>
+        <a href="#traces-section" class="btn" id="cta-open-3d">View 3D Kinematics</a>
         <a
           href="https://github.com/neural-control-and-computation-lab/tool-pantomime-paper"
           target="_blank"
           rel="noopener noreferrer"
           class="btn"
           id="cta-github-repo"
-        >GitHub Repository &amp; Data</a>
+        >GitHub Code &amp; Data</a>
       </div>
     </div>
   </header>
@@ -55,68 +59,147 @@
   <nav class="sticky-nav" aria-label="Section navigation">
     <div class="nav-inner">
       <div class="nav-links">
-        <a href="#sandbox-section" class="nav-link active" id="nav-sandbox">1. Model &amp; Feature Sandbox</a>
-        <a href="#inspector-section" class="nav-link" id="nav-inspector">2. Participant Inspector</a>
-        <a href="#traces-section" class="nav-link" id="nav-traces">3. 3D Kinematics</a>
-        <a href="#atlas-section" class="nav-link" id="nav-atlas">4. 39-Tool Battery Atlas</a>
-        <a href="#figures-section" class="nav-link" id="nav-figures">5. Figures &amp; Reproduce</a>
+        <a href="#traces-section" class="nav-link" id="nav-traces">1. 3D Kinematics</a>
+        <a href="#sandbox-section" class="nav-link active" id="nav-sandbox">2. Final Model Sandbox</a>
+        <a href="#inspector-section" class="nav-link" id="nav-inspector">3. Patient Breakdown</a>
+        <a href="#atlas-section" class="nav-link" id="nav-atlas">4. Tool Battery</a>
+        <a href="#figures-section" class="nav-link" id="nav-figures">Figures &amp; Code</a>
       </div>
-      <div class="compute-status" id="compute-status">Loading kinematic dataset&hellip;</div>
+      <div class="compute-status" id="compute-status">Loading dataset&hellip;</div>
     </div>
   </nav>
 
   <main class="container">
     <!-- =================================================================== -->
-    <!-- SECTION 1: LIVE COMBINED MODEL & FEATURE SANDBOX                    -->
+    <!-- CHAPTER 1: TASK & 3D PANTOMIME KINEMATICS                           -->
+    <!-- =================================================================== -->
+    <section class="section-block" id="traces-section">
+      <div class="section-head">
+        <div>
+          <div class="chapter-kicker">01 &middot; Task &amp; Movement</div>
+          <h2>What tool-use pantomime looks like in 3D</h2>
+          <p class="section-prose">
+            Participants viewed an image of a tool and demonstrated its use without holding the object while 8 electromagnetic sensors tracked the left hand, arm, and shoulders. Trained coders scored each trial from 0 to 3 across hand posture, arm posture and trajectory, and amplitude and timing&mdash;with apraxia deficits (score &lt; 2.52) driven mainly by hand posture errors.
+          </p>
+        </div>
+      </div>
+
+      <div class="surface-card">
+        <div class="traces-controls">
+          <div style="display:flex; align-items:center; gap:0.45rem; flex-wrap:wrap;">
+            <span class="preset-label">Tool:</span>
+            <button type="button" class="preset-chip active" data-trace-item="Corkscrew" id="trace-btn-corkscrew">Corkscrew</button>
+            <button type="button" class="preset-chip" data-trace-item="Hammer" id="trace-btn-hammer">Hammer</button>
+            <button type="button" class="preset-chip" data-trace-item="Lipstick" id="trace-btn-lipstick">Lipstick</button>
+            <button type="button" class="preset-chip" data-trace-item="Scissors" id="trace-btn-scissors">Scissors</button>
+          </div>
+          <div style="display:flex; align-items:center; gap:0.75rem; font-size:0.8rem; color:var(--text-secondary);">
+            <label style="cursor:pointer;"><input type="checkbox" id="chk-trace-wrist" checked /> Wrist</label>
+            <label style="cursor:pointer;"><input type="checkbox" id="chk-trace-index" /> Index</label>
+            <label style="cursor:pointer;"><input type="checkbox" id="chk-trace-thumb" /> Thumb</label>
+            <button type="button" class="btn btn-sm" id="btn-reset-3d">Reset 3D View</button>
+          </div>
+        </div>
+
+        <div class="scrub-bar">
+          <button type="button" class="btn btn-primary btn-sm" id="btn-play-trace">&#9654; Play</button>
+          <span style="font-size:0.79rem; font-weight:600; white-space:nowrap;">Time:</span>
+          <input type="range" id="slider-trace-time" min="0" max="100" step="0.5" value="100" />
+          <span class="slider-val" id="val-trace-time" style="min-width:44px; text-align:right;">100%</span>
+          <span style="font-size:0.75rem; color:var(--text-muted); white-space:nowrap;">Drag 3D plots to rotate</span>
+        </div>
+
+        <div class="traces-3col" id="traces-3d-cards"></div>
+        <div class="svg-wrap" id="traces-timeseries-svg"></div>
+      </div>
+    </section>
+
+    <!-- =================================================================== -->
+    <!-- CHAPTER 2: THE FINAL COMBINED MODEL & INTERACTIVE SANDBOX           -->
     <!-- =================================================================== -->
     <section class="section-block" id="sandbox-section">
       <div class="section-head">
         <div>
-          <h2>1. Interactive Combined Model &amp; Feature Ablation Sandbox</h2>
-          <p>
-            Runs the exact two-pathway Ridge pipeline (<code>BlendModel</code>) directly in your browser on all 1,950 trials. Toggle individual kinematic features, motor families, or tool items to see how they contribute to continuous score prediction and apraxia classification.
+          <div class="chapter-kicker">02 &middot; Final Combined Model</div>
+          <h2>Blending global movement profiles with tool-specific models</h2>
+          <p class="section-prose">
+            From each trial we extract 46 scale-free features spanning hand posture, arm coordination, and timing. Combining a <strong>participant-level model</strong> (overall repertoire mean and variability) with <strong>39 item-level models</strong> outperforms either pathway alone&mdash;driven most strongly by distal hand kinematics (46.1% of weight).
           </p>
         </div>
-        <button type="button" class="btn btn-sm" id="btn-reset-model">Reset to Manuscript Baseline</button>
+        <button type="button" class="btn btn-sm" id="btn-reset-model">Reset to Final Model</button>
       </div>
 
-      <div class="preset-bar" role="group" aria-label="Model hypothesis presets">
-        <span class="preset-label">Presets:</span>
+      <!-- Minimal 3-Step Visual Architecture Strip -->
+      <div class="pipeline-strip" aria-label="Combined model overview">
+        <div class="pipeline-step">
+          <div class="pipeline-step-title">1. 46 Scale-Free Features / Trial</div>
+          <div class="pipeline-step-sub">
+            <span style="color:#882255; font-weight:600;">19 Hand</span> &middot;
+            <span style="color:#b87700; font-weight:600;">13 Arm</span> &middot;
+            <span style="color:#237c6d; font-weight:600;">13 Amp/Timing</span> &middot;
+            <span style="color:#5f6069; font-weight:600;">1 Motion</span>
+          </div>
+        </div>
+        <div class="pipeline-arrow" aria-hidden="true">&rarr;</div>
+        <div class="pipeline-step">
+          <div class="pipeline-dual">
+            <div class="pipeline-subbox">
+              <div class="pipeline-step-title" style="font-size:0.8rem;">Participant Pathway</div>
+              <div class="pipeline-step-sub">1 ridge model on cross-tool mean &amp; SD (92 inputs)</div>
+            </div>
+            <div class="pipeline-subbox">
+              <div class="pipeline-step-title" style="font-size:0.8rem;">Item Pathway</div>
+              <div class="pipeline-step-sub">39 tool-specific ridge models weighted by reliability</div>
+            </div>
+          </div>
+        </div>
+        <div class="pipeline-arrow" aria-hidden="true">&rarr;</div>
+        <div class="pipeline-step">
+          <div class="pipeline-step-title">3. Equal-Weight Calibrated Blend</div>
+          <div class="pipeline-step-sub">
+            50 / 50 average + variance-matching rescaling &rarr; predicted praxis score (0&ndash;3)
+          </div>
+        </div>
+      </div>
+
+      <!-- Hypothesis Presets -->
+      <div class="preset-bar" role="group" aria-label="Model presets">
+        <span class="preset-label">Try:</span>
         <button type="button" class="preset-chip active" data-preset="full" id="preset-full">
-          Manuscript Model (46 features &middot; 39 tools)
-        </button>
-        <button type="button" class="preset-chip" data-preset="top8" id="preset-top8">
-          Top 8 Features Only
-        </button>
-        <button type="button" class="preset-chip" data-preset="screening" id="preset-screening">
-          Compact Screening (Top 8 features &middot; 12 tools)
+          Final Model (46 features &middot; 39 tools)
         </button>
         <button type="button" class="preset-chip" data-preset="hand_only" id="preset-hand">
           Hand Posture Only (19)
         </button>
+        <button type="button" class="preset-chip" data-preset="top8" id="preset-top8">
+          Top 8 Features
+        </button>
+        <button type="button" class="preset-chip" data-preset="screening" id="preset-screening">
+          Short Battery (Top 8 &middot; 12 tools)
+        </button>
         <button type="button" class="preset-chip" data-preset="arm_only" id="preset-arm">
-          Arm Posture Only (13)
+          Arm Only (13)
         </button>
         <button type="button" class="preset-chip" data-preset="amp_only" id="preset-amp">
           Amplitude &amp; Timing Only (13)
         </button>
         <button type="button" class="preset-chip" data-preset="no_hand" id="preset-no-hand">
-          Drop Hand Posture (27 remaining)
+          Without Hand Posture (27)
         </button>
       </div>
 
       <div class="sandbox-layout">
-        <!-- Left Column: Model Controls + Feature/Tool Toggles -->
+        <!-- Left Controls -->
         <aside class="controls-column">
           <div class="surface-card">
             <div class="control-group-title">
-              <span>Evaluation Split</span>
+              <span>Evaluation Cohort</span>
               <span id="active-split-caption">53 LOPO folds</span>
             </div>
             <div class="segmented" role="tablist" aria-label="Evaluation cohort">
-              <button type="button" class="seg-btn active" data-split="full53" id="split-full53">Full LOPO (N=53)</button>
-              <button type="button" class="seg-btn" data-split="train41" id="split-train41">Train LOPO (n=41)</button>
-              <button type="button" class="seg-btn" data-split="test12" id="split-test12">Held-Out Test (n=12)</button>
+              <button type="button" class="seg-btn active" data-split="full53" id="split-full53">Final (N = 53)</button>
+              <button type="button" class="seg-btn" data-split="train41" id="split-train41">Train (n = 41)</button>
+              <button type="button" class="seg-btn" data-split="test12" id="split-test12">Unseen Test (n = 12)</button>
             </div>
 
             <div class="slider-row">
@@ -126,49 +209,52 @@
               </div>
               <input type="range" id="slider-blend" min="0" max="100" step="5" value="50" />
               <div class="slider-ticks">
-                <span>100% Participant</span>
-                <span>50 / 50 Blend</span>
-                <span>100% Item</span>
+                <span>Participant only</span>
+                <span>50 / 50</span>
+                <span>Item only</span>
               </div>
             </div>
 
             <div class="slider-row">
               <div class="slider-header">
-                <label for="slider-alpha"><strong>Ridge Regularization (&alpha;)</strong></label>
-                <span class="slider-val" id="val-alpha">&alpha; = 10</span>
-              </div>
-              <input type="range" id="slider-alpha" min="0" max="6" step="1" value="3" />
-              <div class="slider-ticks">
-                <span>0.5</span>
-                <span>2</span>
-                <span>10 (Paper)</span>
-                <span>50</span>
-                <span>100</span>
-              </div>
-            </div>
-
-            <div class="slider-row">
-              <div class="slider-header">
-                <label for="slider-cutoff"><strong>Apraxia Cut-off Threshold</strong></label>
+                <label for="slider-cutoff"><strong>Apraxia Cut-off</strong></label>
                 <span class="slider-val" id="val-cutoff">2.52</span>
               </div>
               <input type="range" id="slider-cutoff" min="2.15" max="2.75" step="0.01" value="2.52" />
               <div class="slider-ticks">
                 <span>2.15</span>
-                <span>2.52 (2 SD below Ctrl)</span>
+                <span>2.52 (Clinical)</span>
                 <span>2.75</span>
               </div>
             </div>
+
+            <details class="adv-details">
+              <summary>Advanced: Ridge regularization (&alpha;)</summary>
+              <div class="slider-row" style="margin-top:0.55rem;">
+                <div class="slider-header">
+                  <label for="slider-alpha">Penalty strength</label>
+                  <span class="slider-val" id="val-alpha">&alpha; = 10</span>
+                </div>
+                <input type="range" id="slider-alpha" min="0" max="6" step="1" value="3" />
+                <div class="slider-ticks">
+                  <span>0.5</span>
+                  <span>2</span>
+                  <span>10 (Paper)</span>
+                  <span>50</span>
+                  <span>100</span>
+                </div>
+              </div>
+            </details>
           </div>
 
-          <!-- Feature & Tool Selector Card -->
+          <!-- Feature & Tool Selector -->
           <div class="surface-card">
             <div class="selector-tabs">
               <button type="button" class="sel-tab active" id="tab-btn-features">
-                Kinematic Features (<span id="count-features">46/46</span>)
+                Features (<span id="count-features">46/46</span>)
               </button>
               <button type="button" class="sel-tab" id="tab-btn-items">
-                Tool Battery (<span id="count-items">39/39</span>)
+                Tools (<span id="count-items">39/39</span>)
               </button>
             </div>
 
@@ -179,42 +265,42 @@
                 type="search"
                 class="search-input"
                 id="search-features"
-                placeholder="Filter 46 features (e.g., aperture, jerk, knuckle)..."
+                placeholder="Search features (e.g., aperture, knuckle, jerk)..."
                 aria-label="Filter kinematic features"
               />
-              <div style="display:flex; justify-content:space-between; margin-bottom:0.4rem; font-size:0.74rem; color:var(--text-muted);">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem; font-size:0.73rem; color:var(--text-muted);">
                 <span>
                   <button type="button" class="btn btn-sm" id="btn-feat-all">All 46</button>
                   <button type="button" class="btn btn-sm" id="btn-feat-top8">Top 8</button>
                 </span>
-                <span>Learned weight %</span>
+                <span title="Relative |coefficient| share (Mean + SD) and sign of mean weight">Weight % &middot; Sign</span>
               </div>
               <div class="scroll-list" id="feature-list" role="group" aria-label="Kinematic feature checkboxes"></div>
             </div>
 
-            <!-- Tool Items Pane -->
+            <!-- Tools Pane -->
             <div id="pane-items" style="display:none;">
               <input
                 type="search"
                 class="search-input"
                 id="search-items"
-                placeholder="Filter 39 tools (e.g., corkscrew, lipstick, hammer)..."
+                placeholder="Search 39 tools (e.g., lipstick, iron, corkscrew)..."
                 aria-label="Filter tool items"
               />
-              <div style="display:flex; justify-content:space-between; margin-bottom:0.4rem; font-size:0.74rem; color:var(--text-muted);">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem; font-size:0.73rem; color:var(--text-muted);">
                 <span>
                   <button type="button" class="btn btn-sm" id="btn-item-all">All 39</button>
                   <button type="button" class="btn btn-sm" id="btn-item-top12">12 High-Yield</button>
-                  <button type="button" class="btn btn-sm" id="btn-item-prune6">Prune Lowest 6</button>
+                  <button type="button" class="btn btn-sm" id="btn-item-prune6">Drop Lowest 6</button>
                 </span>
-                <span>Manual AUC &middot; Wt</span>
+                <span>AUC &middot; Wt</span>
               </div>
               <div class="scroll-list" id="item-list" role="group" aria-label="Tool battery checkboxes"></div>
             </div>
           </div>
         </aside>
 
-        <!-- Right Column: Live Metrics + Interactive Plots -->
+        <!-- Right Visual Results -->
         <div>
           <div class="kpi-grid">
             <div class="kpi-card">
@@ -223,10 +309,10 @@
                 <span class="kpi-value" id="kpi-r">&mdash;</span>
                 <span class="kpi-delta neutral" id="delta-r">base</span>
               </div>
-              <div class="kpi-sub" id="sub-r">Spearman &rho; = &mdash;</div>
+              <div class="kpi-sub" id="sub-r">&rho; = &mdash;</div>
             </div>
             <div class="kpi-card">
-              <div class="kpi-label">Stroke ROC AUC</div>
+              <div class="kpi-label">Stroke AUC</div>
               <div class="kpi-value-row">
                 <span class="kpi-value" id="kpi-auc">&mdash;</span>
                 <span class="kpi-delta neutral" id="delta-auc">base</span>
@@ -234,7 +320,7 @@
               <div class="kpi-sub" id="sub-auc">Patients only</div>
             </div>
             <div class="kpi-card">
-              <div class="kpi-label">Mean Abs. Error</div>
+              <div class="kpi-label">MAE</div>
               <div class="kpi-value-row">
                 <span class="kpi-value" id="kpi-mae">&mdash;</span>
                 <span class="kpi-delta neutral" id="delta-mae">base</span>
@@ -264,28 +350,26 @@
             <div class="surface-card">
               <div class="chart-title">
                 <span>True vs. Predicted Praxis Score</span>
-                <span style="font-size:0.75rem; font-weight:500; color:var(--text-muted);">Click any participant to inspect</span>
+                <span style="font-size:0.74rem; font-weight:500; color:var(--text-muted);">Click any point to inspect</span>
               </div>
-              <p class="chart-subtitle" id="scatter-subtitle">
-                Out-of-sample predictions with clinical apraxia cut-off at 2.52
-              </p>
+              <p class="chart-hint" id="scatter-subtitle">Cross-validated predictions against manual ratings (0&ndash;3)</p>
               <div class="svg-wrap" id="scatter-container"></div>
               <div class="legend-inline">
-                <span class="legend-item"><span class="legend-swatch" style="background:var(--c-control);"></span>Healthy control</span>
+                <span class="legend-item"><span class="legend-swatch" style="background:var(--c-control);"></span>Control</span>
                 <span class="legend-item"><span class="legend-swatch" style="background:var(--c-nonaprax);"></span>Stroke: without apraxia</span>
                 <span class="legend-item"><span class="legend-swatch" style="background:var(--c-aprax);"></span>Stroke: with apraxia</span>
                 <span class="legend-item"><strong style="font-family:var(--font-mono);">&times;</strong> Misclassified</span>
               </div>
             </div>
 
-            <!-- Pathway Comparison + Confusion Matrix + ROC -->
+            <!-- Pathway Bars + Confusion + ROC -->
             <div style="display:flex; flex-direction:column; gap:1rem;">
               <div class="surface-card">
                 <div class="chart-title">
                   <span>Pathway Comparison</span>
-                  <span style="font-size:0.74rem; color:var(--text-muted);">Participant vs. Item vs. Blended</span>
+                  <span style="font-size:0.73rem; font-weight:500; color:var(--text-muted);">Why blending helps</span>
                 </div>
-                <p class="chart-subtitle">Continuous correlation (<em>r</em>), stroke ROC AUC, and MAE</p>
+                <p class="chart-hint">Agreement (<em>r</em>), stroke AUC, and MAE per pathway</p>
                 <div class="svg-wrap" id="pathway-container"></div>
               </div>
 
@@ -293,12 +377,12 @@
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; align-items:center;">
                   <div>
                     <div class="chart-title"><span>Confusion Matrix</span></div>
-                    <p class="chart-subtitle" style="margin-bottom:0.4rem;">Stroke classification</p>
+                    <p class="chart-hint" style="margin-bottom:0.35rem;">At cut-off</p>
                     <div class="svg-wrap" id="confusion-container"></div>
                   </div>
                   <div>
-                    <div class="chart-title"><span>Stroke ROC Curve</span></div>
-                    <p class="chart-subtitle" style="margin-bottom:0.4rem;">Threshold-free separation</p>
+                    <div class="chart-title"><span>Stroke ROC</span></div>
+                    <p class="chart-hint" style="margin-bottom:0.35rem;">Threshold-free</p>
                     <div class="svg-wrap" id="roc-container"></div>
                   </div>
                 </div>
@@ -306,36 +390,43 @@
             </div>
           </div>
 
-          <!-- Active Family Weight Breakdown Bar -->
+          <!-- Family Share Strip -->
           <div class="surface-card" style="margin-top:1rem;">
             <div class="chart-title">
-              <span>Learned Participant-Pathway Weight Share by Kinematic Family</span>
-              <span id="family-share-readout" style="font-family:var(--font-mono); font-size:0.78rem; color:var(--text-secondary);"></span>
+              <span>Participant-Model Weight Share by Motor Domain</span>
+              <span id="family-share-readout" style="font-family:var(--font-mono); font-size:0.76rem; color:var(--text-secondary);"></span>
             </div>
-            <div id="family-stacked-bar" style="margin-top:0.55rem;"></div>
+            <div id="family-stacked-bar" style="margin-top:0.5rem;"></div>
           </div>
         </div>
       </div>
     </section>
 
     <!-- =================================================================== -->
-    <!-- SECTION 2: PARTICIPANT CONTRIBUTION INSPECTOR                       -->
+    <!-- CHAPTER 3: INDIVIDUAL PATIENT BREAKDOWN                             -->
     <!-- =================================================================== -->
     <section class="section-block" id="inspector-section">
       <div class="section-head">
         <div>
-          <h2>2. Individual Participant Feature &amp; Tool Contribution Inspector</h2>
-          <p>
-            Decompose any participant&rsquo;s out-of-sample prediction into signed kinematic feature contributions (&beta;<sub>mean</sub><em>z</em><sub>mean</sub> + &beta;<sub>SD</sub><em>z</em><sub>SD</sub>) in the participant-level model and per-tool predictions in the item-level pathway.
+          <div class="chapter-kicker">03 &middot; Patient-Level Breakdown</div>
+          <h2>Why the model scores each participant the way it does</h2>
+          <p class="section-prose">
+            Click any dot in the scatter plot above&mdash;or pick an example below&mdash;to see which kinematic features and individual tools pushed that person&rsquo;s predicted score up or down.
           </p>
         </div>
       </div>
 
       <div class="surface-card">
         <div class="participant-bar">
-          <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
-            <label for="select-participant" style="font-size:0.85rem; font-weight:600;">Selected Participant:</label>
+          <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+            <label for="select-participant" style="font-size:0.82rem; font-weight:600;">Participant:</label>
             <select id="select-participant" class="select-box"></select>
+            <span style="font-size:0.74rem; color:var(--text-muted); margin-left:0.25rem;">Examples:</span>
+            <button type="button" class="btn btn-sm quick-pid-btn" data-pid="ST067">ST067 (Apraxia)</button>
+            <button type="button" class="btn btn-sm quick-pid-btn" data-pid="ST034">ST034 (Apraxia)</button>
+            <button type="button" class="btn btn-sm quick-pid-btn" data-pid="ST028">ST028 (Borderline)</button>
+            <button type="button" class="btn btn-sm quick-pid-btn" data-pid="ST040">ST040 (No apraxia)</button>
+            <button type="button" class="btn btn-sm quick-pid-btn" data-pid="CL030">CL030 (Control)</button>
           </div>
           <div class="part-pills" id="participant-summary-pills"></div>
         </div>
@@ -343,23 +434,19 @@
         <div class="inspector-grid">
           <div>
             <div class="chart-title">
-              <span>Top Signed Kinematic Feature Contributions</span>
-              <span style="font-size:0.74rem; color:var(--text-muted);">Participant-level pathway (&Delta; score vs. cohort mean)</span>
+              <span>Top Kinematic Feature Contributions</span>
+              <span style="font-size:0.73rem; font-weight:500; color:var(--text-muted);">Participant pathway</span>
             </div>
-            <p class="chart-subtitle">
-              Features pushing this participant&rsquo;s predicted score down (red, apraxia-associated) vs. up (green, intact praxis)
-            </p>
+            <p class="chart-hint">Red lowers predicted praxis score; green raises it relative to the cohort average</p>
             <div class="svg-wrap" id="inspector-features-svg"></div>
           </div>
 
           <div>
             <div class="chart-title">
-              <span>Per-Tool Item Model Predictions vs. Manual Ratings</span>
-              <span style="font-size:0.74rem; color:var(--text-muted);">Ordered by prediction error (predicted &minus; manual)</span>
+              <span>Tool-by-Tool Predictions vs. Manual Scores</span>
+              <span style="font-size:0.73rem; font-weight:500; color:var(--text-muted);">Item pathway</span>
             </div>
-            <p class="chart-subtitle">
-              Filled circles show item-model predicted scores (0&ndash;3); open rings show manual coder scores
-            </p>
+            <p class="chart-hint">Purple filled circles = kinematic prediction (0&ndash;3); open rings = manual coder score</p>
             <div class="svg-wrap" id="inspector-items-svg"></div>
           </div>
         </div>
@@ -367,56 +454,15 @@
     </section>
 
     <!-- =================================================================== -->
-    <!-- SECTION 3: 3D PANTOMIME KINEMATICS VIEWER                           -->
-    <!-- =================================================================== -->
-    <section class="section-block" id="traces-section">
-      <div class="section-head">
-        <div>
-          <h2>3. Interactive 3D Pantomime Trajectories &amp; Kinematic Profiles</h2>
-          <p>
-            Drag any 3D workspace panel to rotate and compare movement trajectories across a healthy control, a stroke patient without apraxia, and a stroke patient with apraxia. Scrub or animate normalized time to track grasp aperture, elbow angle, and wrist speed simultaneously.
-          </p>
-        </div>
-      </div>
-
-      <div class="surface-card">
-        <div class="traces-controls">
-          <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
-            <span class="preset-label">Tool Gesture:</span>
-            <button type="button" class="preset-chip active" data-trace-item="Corkscrew" id="trace-btn-corkscrew">Corkscrew (Twisting)</button>
-            <button type="button" class="preset-chip" data-trace-item="Hammer" id="trace-btn-hammer">Hammer (Striking)</button>
-            <button type="button" class="preset-chip" data-trace-item="Lipstick" id="trace-btn-lipstick">Lipstick (Face Lift)</button>
-            <button type="button" class="preset-chip" data-trace-item="Scissors" id="trace-btn-scissors">Scissors (Distal Pinch)</button>
-          </div>
-          <div style="display:flex; align-items:center; gap:0.75rem; font-size:0.81rem;">
-            <label><input type="checkbox" id="chk-trace-wrist" checked /> Wrist path</label>
-            <label><input type="checkbox" id="chk-trace-index" /> Index fingertip</label>
-            <label><input type="checkbox" id="chk-trace-thumb" /> Thumb tip</label>
-            <button type="button" class="btn btn-sm" id="btn-reset-3d">Reset 3D View</button>
-          </div>
-        </div>
-
-        <div class="scrub-bar">
-          <button type="button" class="btn btn-primary btn-sm" id="btn-play-trace">&#9654; Play</button>
-          <span style="font-size:0.8rem; font-weight:600; white-space:nowrap;">Normalized Time:</span>
-          <input type="range" id="slider-trace-time" min="0" max="100" step="0.5" value="100" />
-          <span class="slider-val" id="val-trace-time" style="min-width:48px; text-align:right;">100%</span>
-        </div>
-
-        <div class="traces-3col" id="traces-3d-cards"></div>
-        <div class="svg-wrap" id="traces-timeseries-svg"></div>
-      </div>
-    </section>
-
-    <!-- =================================================================== -->
-    <!-- SECTION 4: 39-TOOL BATTERY & COHORT ATLAS                           -->
+    <!-- CHAPTER 4: 39-TOOL BATTERY & CLINICAL TRANSLATION                   -->
     <!-- =================================================================== -->
     <section class="section-block" id="atlas-section">
       <div class="section-head">
         <div>
-          <h2>4. 39-Tool Pantomime Battery &amp; Discriminability Atlas</h2>
-          <p>
-            Compare manual apraxia discriminability (AUC), cross-validated kinematic AUC, and learned item-model reliability weights across all 39 everyday tools, alongside standardized scoring criteria.
+          <div class="chapter-kicker">04 &middot; Tool Battery &amp; Clinical Translation</div>
+          <h2>Which tools separate apraxia&mdash;and which predict most reliably</h2>
+          <p class="section-prose">
+            Standalone apraxia discrimination varies widely across the 39 tools (AUC = 0.50&ndash;0.82), whereas the model weights tools by within-item kinematic predictability rather than standalone AUC (<em>r</em> = 0.10). Pruning low-yield items (e.g., beer mug, paper clip) while keeping discriminating, predictable tools (e.g., lipstick, iron, nail clipper, corkscrew) offers a practical path toward shorter clinical screening.
           </p>
         </div>
       </div>
@@ -424,27 +470,25 @@
       <div class="atlas-grid">
         <div class="surface-card">
           <div class="chart-title">
-            <span>Item Reliability Weight vs. Standalone Apraxia AUC</span>
+            <span>Model Reliability Weight vs. Standalone AUC</span>
           </div>
-          <p class="chart-subtitle">
-            Item weights reflect within-tool kinematic predictability rather than standalone manual AUC (<em>r</em> = 0.10) or kinematic AUC (<em>r</em> = 0.23)
-          </p>
+          <p class="chart-hint">Hover any tool to inspect; click to highlight in the table</p>
           <div style="margin-bottom:0.6rem; display:flex; gap:0.4rem;">
-            <button type="button" class="btn btn-sm btn-primary" id="btn-atlas-manual-auc">X-Axis: Manual Score AUC</button>
-            <button type="button" class="btn btn-sm" id="btn-atlas-kin-auc">X-Axis: Kinematic AUC</button>
+            <button type="button" class="btn btn-sm btn-primary" id="btn-atlas-manual-auc">Manual Score AUC</button>
+            <button type="button" class="btn btn-sm" id="btn-atlas-kin-auc">Kinematic AUC</button>
           </div>
           <div class="svg-wrap" id="atlas-scatter-svg"></div>
         </div>
 
         <div class="surface-card">
-          <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem; margin-bottom:0.65rem; flex-wrap:wrap;">
-            <div class="chart-title" style="margin:0;"><span>All 39 Tool-Use Pantomime Items</span></div>
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem; margin-bottom:0.6rem; flex-wrap:wrap;">
+            <div class="chart-title" style="margin:0;"><span>39-Tool Battery (Click headers to sort)</span></div>
             <input
               type="search"
               class="search-input"
               id="search-atlas"
-              placeholder="Search tools, motion categories, or coding criteria..."
-              style="max-width:320px; margin:0;"
+              placeholder="Filter tools or rubrics..."
+              style="max-width:260px; margin:0;"
             />
           </div>
           <div class="table-scroll">
@@ -452,12 +496,12 @@
               <thead>
                 <tr>
                   <th data-sort="name">Tool</th>
-                  <th data-sort="motion_type">Motion Category</th>
+                  <th data-sort="motion_type">Motion</th>
                   <th data-sort="manual_auc" class="num-col">Manual AUC</th>
-                  <th data-sort="kinematic_auc" class="num-col">Kinematic AUC</th>
-                  <th data-sort="weight_full53" class="num-col">Model Wt (%)</th>
-                  <th data-sort="mean_apraxic" class="num-col">Mean (With Apraxia)</th>
-                  <th>Manual Coding Rubric</th>
+                  <th data-sort="kinematic_auc" class="num-col">Kin. AUC</th>
+                  <th data-sort="weight_full53" class="num-col">Model Wt</th>
+                  <th data-sort="mean_apraxic" class="num-col">Apraxia Mean</th>
+                  <th>Coding Criteria</th>
                 </tr>
               </thead>
               <tbody id="atlas-tbody"></tbody>
@@ -468,50 +512,47 @@
     </section>
 
     <!-- =================================================================== -->
-    <!-- SECTION 5: MANUSCRIPT FIGURES & 1-COMMAND REPRODUCIBILITY           -->
+    <!-- MANUSCRIPT FIGURES & REPRODUCIBILITY DRAWER                         -->
     <!-- =================================================================== -->
     <section class="section-block" id="figures-section">
-      <div class="section-head">
-        <div>
-          <h2>5. Manuscript Figures &amp; One-Command Reproducibility</h2>
-          <p>
-            Inspect full-resolution manuscript Figures 1&ndash;4 or reproduce every statistical table and vector/raster figure locally from the de-identified 100 Hz kinematic recordings in ~30 seconds.
-          </p>
-        </div>
-      </div>
-
-      <div class="surface-card">
-        <div class="fig-tabs" role="tablist" aria-label="Manuscript figures">
-          <button type="button" class="preset-chip active" data-fig="1" id="fig-tab-1">Figure 1 &middot; Manual Coding &amp; Cohort (N = 53)</button>
-          <button type="button" class="preset-chip" data-fig="2" id="fig-tab-2">Figure 2 &middot; Model Development &amp; Training LOPO (n = 41)</button>
-          <button type="button" class="preset-chip" data-fig="3" id="fig-tab-3">Figure 3 &middot; Held-Out Test Evaluation (n = 12)</button>
-          <button type="button" class="preset-chip" data-fig="4" id="fig-tab-4">Figure 4 &middot; Full-Cohort Refit &amp; Stability (N = 53)</button>
-        </div>
-        <div class="fig-viewer">
-          <img id="manuscript-fig-img" src="figures/fig1.png" alt="Manuscript Figure 1" loading="lazy" />
-        </div>
-
-        <div class="code-card">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem; color:#a9b0be; font-size:0.75rem;">
-            <span>Reproduce all manuscript statistics &amp; Figures 1&ndash;4 from raw 100 Hz recordings</span>
-            <button type="button" class="btn btn-sm" id="btn-copy-cmd" style="background:#2a2e37; color:#fff; border-color:#434957;">Copy Commands</button>
+      <details class="figures-drawer" open>
+        <summary>
+          <span>Manuscript Figures (1&ndash;4) &amp; Two-Line Local Reproduction</span>
+          <span style="font-size:0.78rem; font-weight:500; color:var(--text-muted);">Toggle viewer</span>
+        </summary>
+        <div class="figures-drawer-body">
+          <div class="fig-tabs" role="tablist" aria-label="Manuscript figures">
+            <button type="button" class="preset-chip active" data-fig="4" id="fig-tab-4">Figure 4 &middot; Final Model on All Participants (N = 53)</button>
+            <button type="button" class="preset-chip" data-fig="2" id="fig-tab-2">Figure 2 &middot; Model Pipeline &amp; Training CV (n = 41)</button>
+            <button type="button" class="preset-chip" data-fig="3" id="fig-tab-3">Figure 3 &middot; Held-Out Test Set (n = 12)</button>
+            <button type="button" class="preset-chip" data-fig="1" id="fig-tab-1">Figure 1 &middot; Manual Coding &amp; Cohort (N = 53)</button>
           </div>
+          <div class="fig-viewer">
+            <img id="manuscript-fig-img" src="figures/fig4.png" alt="Manuscript Figure 4" loading="lazy" />
+          </div>
+
+          <div class="code-card">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.35rem; color:#a9b0be; font-size:0.74rem;">
+              <span>Reproduce all statistics &amp; Figures 1&ndash;4 from raw 100 Hz recordings</span>
+              <button type="button" class="btn btn-sm" id="btn-copy-cmd" style="background:#2a2e37; color:#fff; border-color:#434957;">Copy</button>
+            </div>
 <pre id="repro-commands" style="margin:0;">git clone https://github.com/neural-control-and-computation-lab/tool-pantomime-paper.git
-cd tool-pantomime-paper
-pip install -r requirements.txt
+cd tool-pantomime-paper &amp;&amp; pip install -r requirements.txt
 python reproduce.py</pre>
+          </div>
         </div>
-      </div>
+      </details>
     </section>
   </main>
 
   <footer class="site-footer">
     <div class="container" style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:1rem;">
       <div>
-        <strong>Tool Pantomime Kinematic Scoring</strong> &middot; Neural Control and Computation Lab (York University) &amp; Cognition and Action Lab (Jefferson Moss Rehabilitation Research Institute)
+        <strong>Automated kinematic scoring of tool-use pantomime gestures in limb apraxia</strong> &middot; York University &amp; Jefferson Moss Rehabilitation Research Institute
       </div>
       <div>
-        Released under the <a href="https://github.com/neural-control-and-computation-lab/tool-pantomime-paper/blob/main/LICENSE" style="color:inherit;">MIT License</a>
+        <a href="https://github.com/neural-control-and-computation-lab/tool-pantomime-paper" style="color:inherit;">GitHub</a> &middot;
+        <a href="https://github.com/neural-control-and-computation-lab/tool-pantomime-paper/blob/main/LICENSE" style="color:inherit;">MIT License</a>
       </div>
     </div>
   </footer>

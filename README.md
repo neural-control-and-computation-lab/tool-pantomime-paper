@@ -1,13 +1,13 @@
-# Predicting Clinical Limb Apraxia Scores from Upper-Limb Pantomime Kinematics
+# Automated kinematic scoring of tool-use pantomime gestures in limb apraxia
 
-**Daanish M. Mulla<sup>1</sup>, Aaron L. Wong<sup>2,3</sup>, Laurel J. Buxbaum<sup>2,3</sup>, & J. Andrew Michaels<sup>1</sup>**  
-<sup>1</sup>*Centre for Vision Research, York University, Toronto, ON, Canada* · <sup>2</sup>*Jefferson Moss Rehabilitation Research Institute &* <sup>3</sup>*Department of Rehabilitation Medicine, Thomas Jefferson University, Philadelphia, PA, USA*
+**Daanish M. Mulla<sup>1</sup>, Laurel J. Buxbaum<sup>2,3</sup>, Aaron L. Wong<sup>2,3</sup>, & Jonathan A. Michaels<sup>1,4,5</sup>**  
+<sup>1</sup>*School of Kinesiology & Health Science, York University, Toronto, ON, Canada* · <sup>2</sup>*Jefferson Moss Rehabilitation Research Institute &* <sup>3</sup>*Department of Rehabilitation Medicine, Thomas Jefferson University, Philadelphia, PA, USA* · <sup>4</sup>*Centre for Vision Research &* <sup>5</sup>*Centre for Integrative and Applied Neuroscience, York University, Toronto, ON, Canada*
 
 [![Launch Interactive Explorer](https://img.shields.io/badge/Interactive_Explorer-Launch_Live_Model_Sandbox_%E2%86%92-0A1F4D?style=for-the-badge)](https://neural-control-and-computation-lab.github.io/tool-pantomime-paper/)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-1976D2?style=for-the-badge)](reproduce.py)
 [![License: MIT](https://img.shields.io/badge/License-MIT-2E7D32?style=for-the-badge)](LICENSE)
 
-This repository provides the de-identified 100 Hz electromagnetic motion-capture dataset, kinematic feature-extraction and Ridge modelling pipeline, publication figure scripts, and **live interactive companion website** for *Predicting Clinical Limb Apraxia Scores from Upper-Limb Pantomime Kinematics*.
+This repository provides the de-identified 100 Hz electromagnetic motion-capture dataset, kinematic feature-extraction and Ridge modelling pipeline, publication figure scripts, and **live interactive companion website** for *Automated kinematic scoring of tool-use pantomime gestures in limb apraxia*.
 
 ---
 

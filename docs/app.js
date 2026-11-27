@@ -43,7 +43,8 @@
     cutoff: 2.52,
     activeFeatures: new Set(),
     activeItems: new Set(),
-    selectedParticipant: "ST028",
+    selectedParticipant: "ST067",
+    highlightedAtlasItem: null,
     featureSearch: "",
     itemSearch: "",
     traceItem: "Corkscrew",
@@ -970,6 +971,14 @@
       } else {
         svg += `<circle class="pt-node" data-pid="${pid}" cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="5.8" fill="${color}" fill-opacity="0.9" stroke="#181a1f" stroke-width="1.1" style="cursor:pointer;"/>`;
       }
+
+      const showTestLabel = STATE.split === "test12" && !isCtrl && tr < cutoff;
+      if (isSel || showTestLabel) {
+        const placeLeft = px > pad.l + pw * 0.72;
+        const lx = placeLeft ? px - 10 : px + 10;
+        const anchor = placeLeft ? "end" : "start";
+        svg += `<text x="${lx.toFixed(1)}" y="${(py + 3.5).toFixed(1)}" text-anchor="${anchor}" font-size="10.5" font-family="var(--font-mono)" font-weight="700" fill="${isSel ? "#17191e" : color}" stroke="#ffffff" stroke-width="3" paint-order="stroke" style="pointer-events:none;">${pid}</text>`;
+      }
     }
     svg += `</svg>`;
     container.innerHTML = svg;
@@ -1314,24 +1323,30 @@
       sel.appendChild(opt);
     }
 
+    document.querySelectorAll(".quick-pid-btn").forEach((btn) => {
+      btn.classList.toggle("btn-primary", btn.getAttribute("data-pid") === pid);
+    });
+
     const pMeta = STATE.data.participants.find((x) => x.id === pid);
     const fo = res.foldOutputs[pid];
     const tr = res.trueByPid[pid];
     const bl = res.blendPred[pid];
 
     document.getElementById("participant-summary-pills").innerHTML = `
-      <span class="part-stat">Manual Score: <strong>${tr.toFixed(3)}</strong> (HP ${pMeta.hp.toFixed(2)}, AP ${pMeta.ap.toFixed(2)}, AT ${pMeta.at.toFixed(2)})</span>
-      <span class="part-stat">Participant Pathway: <strong>${res.partPred[pid].toFixed(3)}</strong></span>
-      <span class="part-stat">Item Pathway: <strong>${res.itemPred[pid].toFixed(3)}</strong></span>
-      <span class="part-stat">Blended Prediction: <strong>${bl.toFixed(3)}</strong></span>
+      <span class="part-stat">Manual: <strong>${tr.toFixed(2)}</strong> (HP ${pMeta.hp.toFixed(2)}, AP ${pMeta.ap.toFixed(2)}, AT ${pMeta.at.toFixed(2)})</span>
+      <span class="part-stat">Part.: <strong>${res.partPred[pid].toFixed(2)}</strong></span>
+      <span class="part-stat">Item: <strong>${res.itemPred[pid].toFixed(2)}</strong></span>
+      <span class="part-stat">Blended: <strong>${bl.toFixed(2)}</strong></span>
     `;
 
     // Left plot: Top 16 signed feature contributions
     const featContribs = STATE.data.features
       .filter((f) => STATE.activeFeatures.has(f.index))
       .map((f) => ({
+        index: f.index,
         name: f.name,
         family: f.family,
+        description: f.description,
         color: f.color,
         val: fo.featContrib[f.index],
       }))
@@ -1354,16 +1369,32 @@
       const x1 = Math.min(xZero, sx(d.val));
       const bw = Math.max(1.5, Math.abs(sx(d.val) - xZero));
       const barCol = d.val < 0 ? "#c93835" : "#1f7a4c";
-      fSvg += `<line x1="${pad.l}" y1="${yy + 9}" x2="${W - pad.r}" y2="${yy + 9}" stroke="#f0ede6" stroke-width="1"/>`;
-      fSvg += `<rect x="${x1.toFixed(1)}" y="${yy + 3}" width="${bw.toFixed(1)}" height="12" rx="2" fill="${barCol}" fill-opacity="0.85"/>`;
-      fSvg += `<circle cx="${pad.l - 184}" cy="${yy + 9}" r="3.5" fill="${d.color}"/>`;
-      fSvg += `<text x="${pad.l - 8}" y="${yy + 13}" text-anchor="end" font-size="10.5" fill="#181a1f">${d.name}</text>`;
+      fSvg += `<g class="insp-feat-row" data-idx="${idx}" style="cursor:pointer;">
+        <rect x="0" y="${yy}" width="${W}" height="${rowH}" fill="transparent"/>
+        <line x1="${pad.l}" y1="${yy + 9}" x2="${W - pad.r}" y2="${yy + 9}" stroke="#f0ede6" stroke-width="1"/>
+        <rect x="${x1.toFixed(1)}" y="${yy + 3}" width="${bw.toFixed(1)}" height="12" rx="2" fill="${barCol}" fill-opacity="0.88"/>
+        <circle cx="${pad.l - 184}" cy="${yy + 9}" r="3.5" fill="${d.color}"/>
+        <text x="${pad.l - 8}" y="${yy + 13}" text-anchor="end" font-size="10.5" fill="#181a1f">${d.name}</text>
+      </g>`;
     });
     for (const tv of [-vmax * 0.75, 0, vmax * 0.75]) {
       fSvg += `<text x="${sx(tv)}" y="${H - 14}" text-anchor="middle" font-size="10" font-family="var(--font-mono)" fill="#494e59">${tv >= 0 ? "+" : ""}${tv.toFixed(3)}</text>`;
     }
     fSvg += `</svg>`;
-    document.getElementById("inspector-features-svg").innerHTML = fSvg;
+    const fWrap = document.getElementById("inspector-features-svg");
+    fWrap.innerHTML = fSvg;
+    fWrap.querySelectorAll(".insp-feat-row").forEach((el) => {
+      const d = featContribs[Number(el.getAttribute("data-idx"))];
+      el.addEventListener("mousemove", (evt) => {
+        showTooltip(
+          evt,
+          `<strong>${d.name}</strong> (${d.family})<br/>` +
+            `Score contribution for ${pid}: <strong>${d.val >= 0 ? "+" : ""}${d.val.toFixed(4)}</strong><br/>` +
+            `<span style="color:#cbd5e1;">${d.description}</span>`
+        );
+      });
+      el.addEventListener("mouseleave", hideTooltip);
+    });
 
     // Right plot: Per-tool predictions vs manual score for this participant
     const itemById = new Map(STATE.data.items.map((it) => [it.id, it.name]));
@@ -1398,14 +1429,30 @@
       const xp = sx2(d.pred);
       const xt = sx2(d.trueScore);
       const lineCol = d.err > 0.25 ? "#c93835" : d.err < -0.25 ? "#1976d2" : "#8c8f99";
-      iSvg += `<line x1="${pad2.l}" y1="${yy}" x2="${W - pad2.r}" y2="${yy}" stroke="#f3f1eb" stroke-width="1"/>`;
-      iSvg += `<line x1="${xt.toFixed(1)}" y1="${yy}" x2="${xp.toFixed(1)}" y2="${yy}" stroke="${lineCol}" stroke-width="2"/>`;
-      iSvg += `<circle cx="${xt.toFixed(1)}" cy="${yy}" r="4.5" fill="#ffffff" stroke="#181a1f" stroke-width="1.6"/>`;
-      iSvg += `<circle cx="${xp.toFixed(1)}" cy="${yy}" r="4.6" fill="#7e6fb2" stroke="#181a1f" stroke-width="1"/>`;
-      iSvg += `<text x="${pad2.l - 8}" y="${yy + 3.8}" text-anchor="end" font-size="10.5" fill="#181a1f">${d.name}</text>`;
+      iSvg += `<g class="insp-tool-row" data-idx="${idx}" style="cursor:pointer;">
+        <rect x="0" y="${yy - 9}" width="${W}" height="${rowH}" fill="transparent"/>
+        <line x1="${pad2.l}" y1="${yy}" x2="${W - pad2.r}" y2="${yy}" stroke="#f3f1eb" stroke-width="1"/>
+        <line x1="${xt.toFixed(1)}" y1="${yy}" x2="${xp.toFixed(1)}" y2="${yy}" stroke="${lineCol}" stroke-width="2"/>
+        <circle cx="${xt.toFixed(1)}" cy="${yy}" r="4.5" fill="#ffffff" stroke="#181a1f" stroke-width="1.6"/>
+        <circle cx="${xp.toFixed(1)}" cy="${yy}" r="4.6" fill="#7e6fb2" stroke="#181a1f" stroke-width="1"/>
+        <text x="${pad2.l - 8}" y="${yy + 3.8}" text-anchor="end" font-size="10.5" fill="#181a1f">${d.name}</text>
+      </g>`;
     });
     iSvg += `</svg>`;
-    document.getElementById("inspector-items-svg").innerHTML = iSvg;
+    const iWrap = document.getElementById("inspector-items-svg");
+    iWrap.innerHTML = iSvg;
+    iWrap.querySelectorAll(".insp-tool-row").forEach((el) => {
+      const d = toolRows[Number(el.getAttribute("data-idx"))];
+      el.addEventListener("mousemove", (evt) => {
+        showTooltip(
+          evt,
+          `<strong>${d.name}</strong> (${pid})<br/>` +
+            `Manual coder score: <strong>${d.trueScore.toFixed(2)} / 3</strong><br/>` +
+            `Item-model prediction: <strong>${d.pred.toFixed(2)} / 3</strong> (${d.err >= 0 ? "+" : ""}${d.err.toFixed(2)})`
+        );
+      });
+      el.addEventListener("mouseleave", hideTooltip);
+    });
   }
 
   // ========================================================================
@@ -1689,7 +1736,11 @@
       const cx = sx(clip(it[xKey], xmin, xmax));
       const cy = sy(it.weight_full53);
       const active = STATE.activeItems.has(it.id);
-      svg += `<circle class="atlas-dot" data-iid="${it.id}" cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="5.2" fill="${active ? "#7e6fb2" : "#cbd5e1"}" stroke="#181a1f" stroke-width="0.9" style="cursor:pointer;"/>`;
+      const isHi = STATE.highlightedAtlasItem === it.id;
+      if (isHi) {
+        svg += `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="9.5" fill="none" stroke="#0a1f4d" stroke-width="2"/>`;
+      }
+      svg += `<circle class="atlas-dot" data-iid="${it.id}" cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${isHi ? 6.2 : 5.2}" fill="${isHi ? "#0a1f4d" : active ? "#7e6fb2" : "#cbd5e1"}" stroke="#181a1f" stroke-width="0.9" style="cursor:pointer;"/>`;
     }
     svg += `</svg>`;
     const scWrap = document.getElementById("atlas-scatter-svg");
@@ -1708,6 +1759,14 @@
         );
       });
       el.addEventListener("mouseleave", hideTooltip);
+      el.addEventListener("click", () => {
+        STATE.highlightedAtlasItem = STATE.highlightedAtlasItem === iid ? null : iid;
+        renderAtlas();
+        if (STATE.highlightedAtlasItem !== null) {
+          const rowEl = document.querySelector(`#atlas-tbody tr[data-iid="${iid}"]`);
+          if (rowEl) rowEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }
+      });
     });
 
     // Table
@@ -1732,7 +1791,7 @@
     tbody.innerHTML = filtered
       .map(
         (it) => `
-      <tr>
+      <tr data-iid="${it.id}" style="${STATE.highlightedAtlasItem === it.id ? "background:#eef2fb;" : ""} cursor:pointer;">
         <td><strong>${it.name}</strong></td>
         <td style="color:var(--text-secondary);">${it.motion_type.replace(/_/g, " ")}</td>
         <td class="num-col">${it.manual_auc.toFixed(2)}</td>
@@ -1745,6 +1804,14 @@
       </tr>`
       )
       .join("");
+
+    tbody.querySelectorAll("tr[data-iid]").forEach((trEl) => {
+      trEl.addEventListener("click", () => {
+        const iid = Number(trEl.getAttribute("data-iid"));
+        STATE.highlightedAtlasItem = STATE.highlightedAtlasItem === iid ? null : iid;
+        renderAtlas();
+      });
+    });
   }
 
   // ========================================================================
@@ -1952,13 +2019,29 @@
       updateAll();
     });
 
-    // Participant dropdown
+    // Participant dropdown & quick-pick clinical examples
     document.getElementById("select-participant").addEventListener("change", (e) => {
       STATE.selectedParticipant = e.target.value;
       if (STATE.lastResult) {
         renderScatter(STATE.lastResult);
         renderParticipantInspector(STATE.lastResult);
       }
+    });
+    document.querySelectorAll(".quick-pid-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const targetPid = btn.getAttribute("data-pid");
+        STATE.selectedParticipant = targetPid;
+        if (STATE.lastResult && !(targetPid in STATE.lastResult.blendPred)) {
+          STATE.split = "full53";
+          document.querySelectorAll("[data-split]").forEach((b) =>
+            b.classList.toggle("active", b.getAttribute("data-split") === "full53")
+          );
+          updateAll();
+        } else if (STATE.lastResult) {
+          renderScatter(STATE.lastResult);
+          renderParticipantInspector(STATE.lastResult);
+        }
+      });
     });
 
     // 3D Traces controls
@@ -2063,7 +2146,7 @@
       figImg.src = `figures/fig${num}.png`;
       figImg.alt = `Manuscript Figure ${num}`;
     }
-    setFigSrc(1);
+    setFigSrc(4);
 
     document.querySelectorAll("[data-fig]").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -2078,10 +2161,29 @@
       navigator.clipboard.writeText(txt).then(() => {
         e.target.textContent = "Copied!";
         setTimeout(() => {
-          e.target.textContent = "Copy Commands";
+          e.target.textContent = "Copy";
         }, 1600);
       });
     });
+
+    if (typeof IntersectionObserver !== "undefined") {
+      const navLinks = Array.from(document.querySelectorAll(".nav-link"));
+      const obs = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (entry.isIntersecting) {
+              const href = `#${entry.target.id}`;
+              navLinks.forEach((lnk) => lnk.classList.toggle("active", lnk.getAttribute("href") === href));
+            }
+          }
+        },
+        { rootMargin: "-22% 0px -65% 0px" }
+      );
+      for (const secId of ["traces-section", "sandbox-section", "inspector-section", "atlas-section", "figures-section"]) {
+        const el = document.getElementById(secId);
+        if (el) obs.observe(el);
+      }
+    }
   }
 
   async function init() {
