@@ -75,11 +75,17 @@
     return v < lo ? lo : v > hi ? hi : v;
   }
 
-  // Pre-allocated scratch buffers for zero-GC inner Ridge solves (max dim 128)
+  // Pre-allocated scratch buffers for zero-GC inner Ridge solves (max n <= 128, max p <= 128)
   const _SCRATCH_G = new Float64Array(128 * 128);
   const _SCRATCH_L = new Float64Array(128 * 128);
   const _SCRATCH_Z = new Float64Array(128);
   const _SCRATCH_B = new Float64Array(128);
+  const _SCRATCH_XMEAN = new Float64Array(128);
+  const _SCRATCH_XC = new Float64Array(128 * 128);
+  const _SCRATCH_YC = new Float64Array(128);
+  const _SCRATCH_XTR = new Float64Array(128 * 128);
+  const _SCRATCH_YTR = new Float64Array(128);
+  const _SCRATCH_FOLDS = new Int32Array(16);
 
   /** Cholesky solve G u = b in-place using pre-allocated scratch when n <= 128. */
   function solveSymPosDef(G, b, n) {
@@ -124,20 +130,21 @@
     for (let i = 0; i < n; i++) yMean += y[i];
     yMean /= n;
 
-    const xMean = new Float64Array(p);
+    const xMean = p <= 128 ? _SCRATCH_XMEAN : new Float64Array(p);
+    for (let j = 0; j < p; j++) xMean[j] = 0.0;
     for (let i = 0; i < n; i++) {
       const off = i * p;
       for (let j = 0; j < p; j++) xMean[j] += X[off + j];
     }
     for (let j = 0; j < p; j++) xMean[j] /= n;
 
-    const Xc = new Float64Array(n * p);
+    const Xc = n <= 128 && p <= 128 ? _SCRATCH_XC : new Float64Array(n * p);
     for (let i = 0; i < n; i++) {
       const off = i * p;
       for (let j = 0; j < p; j++) Xc[off + j] = X[off + j] - xMean[j];
     }
 
-    const yc = new Float64Array(n);
+    const yc = n <= 128 ? _SCRATCH_YC : new Float64Array(n);
     for (let i = 0; i < n; i++) yc[i] = y[i] - yMean;
 
     let coef;
@@ -227,23 +234,26 @@
   /** Contiguous K-fold cross_val_predict MSE matching `sklearn.model_selection.KFold(n_splits=k)`. */
   function kfoldRidgeMse(Xs, y, n, p, alpha, kSplits) {
     const k = Math.min(kSplits, n);
-    const foldSizes = new Int32Array(k);
+    const foldSizes = k <= 16 ? _SCRATCH_FOLDS : new Int32Array(k);
     const base = Math.floor(n / k);
     const rem = n % k;
     for (let f = 0; f < k; f++) foldSizes[f] = base + (f < rem ? 1 : 0);
+
+    const Xtr = n <= 128 && p <= 128 ? _SCRATCH_XTR : new Float64Array(n * p);
+    const ytr = n <= 128 ? _SCRATCH_YTR : new Float64Array(n);
 
     let mseSum = 0.0;
     let start = 0;
     for (let f = 0; f < k; f++) {
       const end = start + foldSizes[f];
       const nTr = n - (end - start);
-      const Xtr = new Float64Array(nTr * p);
-      const ytr = new Float64Array(nTr);
       let dst = 0;
       for (let i = 0; i < n; i++) {
         if (i >= start && i < end) continue;
         ytr[dst] = y[i];
-        Xtr.set(Xs.subarray(i * p, (i + 1) * p), dst * p);
+        const srcOff = i * p;
+        const dstOff = dst * p;
+        for (let j = 0; j < p; j++) Xtr[dstOff + j] = Xs[srcOff + j];
         dst++;
       }
       const mdl = fitRidge(Xtr, ytr, nTr, p, alpha);
@@ -998,7 +1008,7 @@
       vals.push(res.blendPred[p], res.trueByPid[p]);
     }
     const mn = Math.min(1.65, Math.floor((Math.min(...vals) - 0.06) * 20) / 20);
-    const mx = Math.max(3.08, Math.ceil((Math.max(...vals) + 0.04) * 20) / 20);
+    const mx = Math.max(3.16, Math.ceil((Math.max(...vals) + 0.06) * 20) / 20);
     const sx = (v) => pad.l + ((v - mn) / (mx - mn)) * pw;
     const sy = (v) => pad.t + (1 - (v - mn) / (mx - mn)) * ph;
 
@@ -1007,7 +1017,7 @@
     const cy = sy(clip(cutoff, mn, mx));
 
     const ticks = [];
-    for (let v = Math.ceil(mn * 5) / 5; v <= mx + 1e-6; v += 0.2) {
+    for (let v = Math.ceil(mn * 5) / 5; v <= mx - 0.05; v += 0.2) {
       ticks.push(Number(v.toFixed(2)));
     }
 
@@ -1032,8 +1042,8 @@
       svg += `<text x="${pad.l + pw - 5}" y="${Math.max(pad.t + 12, cy - 4)}" text-anchor="end" font-size="9.5" font-family="var(--font-mono)" font-weight="600" fill="#0a1f4d" stroke="#ffffff" stroke-width="2.5" paint-order="stroke">cut-off ${cutoff.toFixed(2)}</text>`;
     }
 
-    svg += `<text x="${pad.l + 8}" y="${pad.t + ph - 10}" font-size="11.5" font-style="italic" font-weight="700" fill="#7f0000">With Apraxia</text>`;
-    svg += `<text x="${pad.l + pw - 8}" y="${pad.t + 18}" text-anchor="end" font-size="11.5" font-style="italic" font-weight="700" fill="#0a2e5c">Without Apraxia</text>`;
+    svg += `<text x="${pad.l + 8}" y="${pad.t + ph - 9}" font-size="11.5" font-style="italic" font-weight="700" fill="#7f0000" stroke="#ffffff" stroke-width="2.5" paint-order="stroke">With Apraxia</text>`;
+    svg += `<text x="${pad.l + pw - 8}" y="${pad.t + 15}" text-anchor="end" font-size="11.5" font-style="italic" font-weight="700" fill="#0a2e5c" stroke="#ffffff" stroke-width="2.5" paint-order="stroke">Without Apraxia</text>`;
 
     // Border & Axis labels
     svg += `<rect x="${pad.l}" y="${pad.t}" width="${pw}" height="${ph}" fill="none" stroke="#333740" stroke-width="1.2"/>`;
@@ -1213,8 +1223,8 @@
     ];
     const maxC = Math.max(1, mBlend.fn, mBlend.tn, mBlend.tp, mBlend.fp);
 
-    let cmSvg = `<svg viewBox="0 0 185 165" role="img" aria-label="Apraxia confusion matrix">`;
-    const ox = 46, oy = 14, sz = 54;
+    let cmSvg = `<svg viewBox="0 0 200 168" role="img" aria-label="Apraxia confusion matrix">`;
+    const ox = 58, oy = 14, sz = 54;
     for (let r = 0; r < 2; r++) {
       for (let c = 0; c < 2; c++) {
         const cell = cellMeta[r][c];
@@ -1234,10 +1244,10 @@
     }
     cmSvg += `<text x="${ox + 26}" y="${oy + 2 * sz + 13}" text-anchor="middle" font-size="9.5" fill="#494e59">With</text>`;
     cmSvg += `<text x="${ox + sz + 26}" y="${oy + 2 * sz + 13}" text-anchor="middle" font-size="9.5" fill="#494e59">Without</text>`;
-    cmSvg += `<text x="${ox + sz}" y="${oy + 2 * sz + 28}" text-anchor="middle" font-size="10.5" font-weight="600" fill="#181a1f">True Apraxia</text>`;
-    cmSvg += `<text x="12" y="${oy + sz}" text-anchor="middle" font-size="10.5" font-weight="600" fill="#181a1f" transform="rotate(-90 12 ${oy + sz})">Predicted</text>`;
-    cmSvg += `<text x="${ox - 5}" y="${oy + 29}" text-anchor="end" font-size="9" fill="#494e59">Without</text>`;
-    cmSvg += `<text x="${ox - 5}" y="${oy + sz + 29}" text-anchor="end" font-size="9" fill="#494e59">With</text>`;
+    cmSvg += `<text x="${ox + sz}" y="${oy + 2 * sz + 29}" text-anchor="middle" font-size="10.5" font-weight="600" fill="#181a1f">True Apraxia</text>`;
+    cmSvg += `<text x="11" y="${oy + sz}" text-anchor="middle" font-size="10.5" font-weight="600" fill="#181a1f" transform="rotate(-90 11 ${oy + sz})">Predicted</text>`;
+    cmSvg += `<text x="${ox - 6}" y="${oy + 29}" text-anchor="end" font-size="9" fill="#494e59">Without</text>`;
+    cmSvg += `<text x="${ox - 6}" y="${oy + sz + 29}" text-anchor="end" font-size="9" fill="#494e59">With</text>`;
     cmSvg += `</svg>`;
     cmWrap.innerHTML = cmSvg;
 
@@ -1387,7 +1397,7 @@
         <div class="feat-name-wrap">
           <div class="feat-name">
             <span class="fam-dot" style="background:${f.color}; flex-shrink:0;"></span>
-            <span>${f.name}</span>
+            <span class="feat-title-text">${f.name}</span>
             ${f.in_top8_train ? '<span class="badge-top8">Top 8</span>' : ""}
           </div>
           <div class="feat-bar-track">
