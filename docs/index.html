@@ -93,10 +93,11 @@
             <button type="button" class="preset-chip" data-trace-item="Lipstick" id="trace-btn-lipstick">Lipstick</button>
             <button type="button" class="preset-chip" data-trace-item="Scissors" id="trace-btn-scissors">Scissors</button>
           </div>
-          <div style="display:flex; align-items:center; gap:0.75rem; font-size:0.8rem; color:var(--text-secondary);">
-            <label style="cursor:pointer;"><input type="checkbox" id="chk-trace-wrist" checked /> Wrist</label>
-            <label style="cursor:pointer;"><input type="checkbox" id="chk-trace-index" /> Index</label>
-            <label style="cursor:pointer;"><input type="checkbox" id="chk-trace-thumb" /> Thumb</label>
+          <div style="display:flex; align-items:center; gap:0.75rem; font-size:0.8rem; color:var(--text-secondary); flex-wrap:wrap;">
+            <span class="preset-label" style="margin-right:0;">3D Markers:</span>
+            <label style="cursor:pointer; font-weight:600; color:var(--text-primary);"><input type="checkbox" id="chk-trace-wrist" checked /> Wrist</label>
+            <label style="cursor:pointer;"><input type="checkbox" id="chk-trace-index" /> <span style="color:#882255; font-weight:600;">Index tip</span></label>
+            <label style="cursor:pointer;"><input type="checkbox" id="chk-trace-thumb" /> <span style="color:#237c6d; font-weight:600;">Thumb tip</span></label>
             <button type="button" class="btn btn-sm" id="btn-reset-3d">Reset 3D View</button>
           </div>
         </div>
@@ -106,10 +107,24 @@
           <span style="font-size:0.79rem; font-weight:600; white-space:nowrap;">Time:</span>
           <input type="range" id="slider-trace-time" min="0" max="100" step="0.5" value="100" />
           <span class="slider-val" id="val-trace-time" style="min-width:44px; text-align:right;">100%</span>
-          <span style="font-size:0.75rem; color:var(--text-muted); white-space:nowrap;">Drag 3D plots to rotate</span>
+          <span style="font-size:0.75rem; color:var(--text-muted); white-space:nowrap;">Drag 3D cubes to rotate</span>
         </div>
 
+        <div style="display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:0.5rem; margin-bottom:0.45rem;">
+          <div class="chart-title" style="margin:0;">
+            <span id="traces-3d-title">3D Wrist Trajectory in Space (cm, mean-centred)</span>
+          </div>
+          <div style="font-size:0.75rem; color:var(--text-muted); display:flex; align-items:center; gap:0.85rem; flex-wrap:wrap;">
+            <span><strong style="font-size:0.85rem;">&#9675;</strong> Movement onset (0%)</span>
+            <span><strong style="font-size:0.85rem;">&#9679;</strong> Current / end position</span>
+            <span>Path darkens over time</span>
+          </div>
+        </div>
         <div class="traces-3col" id="traces-3d-cards"></div>
+
+        <div class="chart-title" style="margin:0.35rem 0 0.35rem;">
+          <span>Synchronized Kinematic Time Series (0&ndash;100% Movement Time)</span>
+        </div>
         <div class="svg-wrap" id="traces-timeseries-svg"></div>
       </div>
     </section>
@@ -471,7 +486,7 @@
           <div class="chapter-kicker">04 &middot; Tool Battery &amp; Clinical Translation</div>
           <h2>Which tools separate apraxia&mdash;and which predict most reliably</h2>
           <p class="section-prose">
-            Standalone apraxia discrimination varies widely across the 39 tools (AUC = 0.50&ndash;0.82), whereas the model weights tools by within-item kinematic predictability rather than standalone AUC (<em>r</em> = 0.10). Pruning low-yield items (e.g., beer mug, paper clip) while keeping discriminating, predictable tools (e.g., lipstick, iron, nail clipper, corkscrew) offers a practical path toward shorter clinical screening.
+            Individual tools vary widely in how well their manual scores alone separate stroke patients with versus without apraxia (manual-score AUC = 0.50&ndash;0.82). However, a tool&rsquo;s <strong>learned reliability weight in the model</strong> is unrelated to its <strong>standalone manual-score apraxia AUC</strong> (weight vs. manual AUC: <em>r</em> = 0.10 in training [<em>n</em> = 41], <em>r</em> = 0.01 across all <em>N</em> = 53). Because the item pathway weights tools by within-item score predictability (<em>r</em> = 0.41) rather than group separation, pruning poorly discriminating items (e.g., beer mug, paper clip) while keeping discriminating, predictable tools (e.g., lipstick, iron, nail clipper, corkscrew) offers a practical path toward shorter clinical screening.
           </p>
         </div>
       </div>
@@ -481,10 +496,10 @@
           <div class="chart-title">
             <span>Model Reliability Weight vs. Standalone AUC</span>
           </div>
-          <p class="chart-hint">Hover any tool to inspect; click to highlight in the table</p>
+          <p class="chart-hint">Each dot is one tool (hover to inspect; click to highlight in table)</p>
           <div style="margin-bottom:0.6rem; display:flex; gap:0.4rem;">
-            <button type="button" class="btn btn-sm btn-primary" id="btn-atlas-manual-auc">Manual Score AUC</button>
-            <button type="button" class="btn btn-sm" id="btn-atlas-kin-auc">Kinematic AUC</button>
+            <button type="button" class="btn btn-sm btn-primary" id="btn-atlas-manual-auc">x: Manual Score AUC</button>
+            <button type="button" class="btn btn-sm" id="btn-atlas-kin-auc">x: Kinematic AUC</button>
           </div>
           <div class="svg-wrap" id="atlas-scatter-svg"></div>
         </div>
@@ -531,13 +546,13 @@
         </summary>
         <div class="figures-drawer-body">
           <div class="fig-tabs" role="tablist" aria-label="Manuscript figures">
-            <button type="button" class="preset-chip active" data-fig="4" id="fig-tab-4">Figure 4 &middot; Final Model on All Participants (N = 53)</button>
+            <button type="button" class="preset-chip active" data-fig="1" id="fig-tab-1">Figure 1 &middot; Manual Coding &amp; Cohort (N = 53)</button>
             <button type="button" class="preset-chip" data-fig="2" id="fig-tab-2">Figure 2 &middot; Model Pipeline &amp; Training CV (n = 41)</button>
             <button type="button" class="preset-chip" data-fig="3" id="fig-tab-3">Figure 3 &middot; Held-Out Test Set (n = 12)</button>
-            <button type="button" class="preset-chip" data-fig="1" id="fig-tab-1">Figure 1 &middot; Manual Coding &amp; Cohort (N = 53)</button>
+            <button type="button" class="preset-chip" data-fig="4" id="fig-tab-4">Figure 4 &middot; Final Model on All Participants (N = 53)</button>
           </div>
           <div class="fig-viewer">
-            <img id="manuscript-fig-img" src="figures/fig4.png" alt="Manuscript Figure 4" loading="lazy" />
+            <img id="manuscript-fig-img" src="figures/fig1.png" alt="Manuscript Figure 1" loading="lazy" />
           </div>
 
           <div class="code-card">

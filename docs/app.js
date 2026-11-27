@@ -1706,7 +1706,22 @@
     renderTracesTimeseries();
   }
 
+  function update3DHeaderTitle() {
+    const titleEl = document.getElementById("traces-3d-title");
+    if (!titleEl) return;
+    const activeNames = [];
+    if (STATE.showWrist) activeNames.push("Wrist");
+    if (STATE.showIndex) activeNames.push("Index Tip");
+    if (STATE.showThumb) activeNames.push("Thumb Tip");
+    if (activeNames.length === 1 && activeNames[0] === "Wrist") {
+      titleEl.textContent = `3D Wrist Trajectory in Space — ${STATE.traceItem} (cm, mean-centred)`;
+    } else {
+      titleEl.textContent = `3D Trajectory in Space (${activeNames.join(" + ")}) — ${STATE.traceItem} (cm, mean-centred)`;
+    }
+  }
+
   function draw3DCanvases() {
+    update3DHeaderTitle();
     const list = STATE.data.sample_traces[STATE.traceItem] || [];
     let halfCube = 8.0;
     for (const tr of list) {
@@ -1734,19 +1749,26 @@
       ctx.clearRect(0, 0, cssW, cssH);
 
       const cx = cssW * 0.5;
-      const cy = cssH * 0.54;
-      const sc = Math.min(cssW, cssH) * 0.34;
+      const cy = cssH * 0.53;
+      const sc = Math.min(cssW, cssH) * 0.33;
 
-      // Draw 3D bounding axes (-halfCube .. +halfCube)
       const h = halfCube;
-      const axisEdges = [
-        [[-h, -h, -h], [h, -h, -h]],
-        [[h, -h, -h], [h, h, -h]],
-        [[h, h, -h], [h, h, h]],
+      // Subtle 3D cube wireframe so spatial depth is immediately clear
+      const backEdges = [
+        [[-h, -h, -h], [-h, h, -h]],
+        [[-h, h, -h], [h, h, -h]],
+        [[-h, -h, -h], [-h, -h, h]],
+        [[-h, -h, h], [h, -h, h]],
+        [[h, -h, h], [h, h, h]],
+        [[-h, h, h], [h, h, h]],
+        [[-h, -h, h], [-h, h, h]],
+        [[-h, h, -h], [-h, h, h]],
+        [[h, -h, -h], [h, -h, h]],
       ];
-      ctx.strokeStyle = "#333740";
-      ctx.lineWidth = 1.25;
-      for (const [p1, p2] of axisEdges) {
+      ctx.strokeStyle = "#e6e3da";
+      ctx.lineWidth = 0.9;
+      ctx.setLineDash([2.5, 2.5]);
+      for (const [p1, p2] of backEdges) {
         const [x1, y1] = project3D(p1, STATE.rotElev, STATE.rotAzim, h, cx, cy, sc);
         const [x2, y2] = project3D(p2, STATE.rotElev, STATE.rotAzim, h, cx, cy, sc);
         ctx.beginPath();
@@ -1754,6 +1776,36 @@
         ctx.lineTo(x2, y2);
         ctx.stroke();
       }
+      ctx.setLineDash([]);
+
+      // Foreground X, Y, Z reference axes with spatial axis labels
+      const axisEdges = [
+        { p1: [-h, -h, -h], p2: [h, -h, -h], lbl: "X", mid: [0, -h * 1.18, -h * 1.06] },
+        { p1: [h, -h, -h], p2: [h, h, -h], lbl: "Y", mid: [h * 1.18, 0, -h * 1.06] },
+        { p1: [h, h, -h], p2: [h, h, h], lbl: "Z", mid: [h * 1.14, h * 1.14, 0] },
+      ];
+      ctx.strokeStyle = "#333740";
+      ctx.lineWidth = 1.25;
+      ctx.font = "600 10px Inter, -apple-system, sans-serif";
+      ctx.fillStyle = "#595e6b";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      for (const ax of axisEdges) {
+        const [x1, y1] = project3D(ax.p1, STATE.rotElev, STATE.rotAzim, h, cx, cy, sc);
+        const [x2, y2] = project3D(ax.p2, STATE.rotElev, STATE.rotAzim, h, cx, cy, sc);
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+        const [lx, ly] = project3D(ax.mid, STATE.rotElev, STATE.rotAzim, h, cx, cy, sc);
+        ctx.fillText(ax.lbl, lx, ly);
+      }
+
+      // Spatial cube scale tag in bottom-left
+      ctx.font = "500 9.5px 'JetBrains Mono', monospace";
+      ctx.fillStyle = "#6c7280";
+      ctx.textAlign = "left";
+      ctx.fillText(`±${Math.round(h)} cm 3D box`, 8, cssH - 9);
 
       const nFrames = tr.wrist_xyz.length;
       const maxFrame = Math.max(1, Math.round((STATE.traceTimePct / 100) * (nFrames - 1)));
@@ -1805,16 +1857,17 @@
     const list = STATE.data.sample_traces[STATE.traceItem] || [];
     if (list.length === 0) return;
 
-    const W = 1140, H = 265;
+    // Generous row height + 2-line rotated y-axis labels so adjacent row titles never overlap
+    const W = 1140, H = 350;
     const rows = [
-      { key: "aperture", label: "Thumb–Index Aperture (cm)" },
-      { key: "elbow_angle", label: "Elbow Angle (°)" },
-      { key: "wrist_speed", label: "Wrist Speed (cm/s)" },
+      { key: "aperture", l1: "Thumb–Index", l2: "Aperture (cm)" },
+      { key: "elbow_angle", l1: "Elbow", l2: "Angle (°)" },
+      { key: "wrist_speed", l1: "Wrist Speed", l2: "(cm/s)" },
     ];
     const colGap = 24;
-    const padL = 62, padR = 16, padT = 12, padB = 26;
+    const padL = 80, padR = 16, padT = 14, padB = 30;
     const colW = (W - padL - padR - 2 * colGap) / 3;
-    const rowGap = 14;
+    const rowGap = 22;
     const rowH = (H - padT - padB - 2 * rowGap) / 3;
 
     let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Synchronized kinematic time series">`;
@@ -1827,15 +1880,18 @@
         }
       }
       if (rm.key === "wrist_speed") ymin = 0;
-      const span = Math.max(1e-3, ymax - ymin);
-      ymin -= 0.05 * span;
-      ymax += 0.06 * span;
+      const rawSpan = Math.max(1e-3, ymax - ymin);
+      if (rm.key !== "wrist_speed") ymin = Math.max(0, ymin - 0.05 * rawSpan);
+      ymax += 0.06 * rawSpan;
       const yTop = padT + rIdx * (rowH + rowGap);
+      const yMid = 0.5 * (ymin + ymax);
+      const fmtTick = (v) => (ymax - ymin < 12 ? v.toFixed(1) : v.toFixed(0));
 
       list.forEach((tr, cIdx) => {
         const xLeft = padL + cIdx * (colW + colGap);
         const col = GROUP_COLORS[cIdx] || "#333";
         svg += `<rect x="${xLeft}" y="${yTop}" width="${colW}" height="${rowH}" fill="#fbfaf7" stroke="#e4e1d9"/>`;
+        svg += `<line x1="${xLeft}" y1="${(yTop + rowH * 0.5).toFixed(1)}" x2="${(xLeft + colW).toFixed(1)}" y2="${(yTop + rowH * 0.5).toFixed(1)}" stroke="#eeebe3" stroke-width="1"/>`;
 
         const pts = tr.tnorm
           .map((tn, i) => {
@@ -1851,12 +1907,17 @@
         svg += `<line class="trace-playhead" data-col="${cIdx}" data-xleft="${xLeft}" data-colw="${colW}" x1="${xCur.toFixed(1)}" y1="${yTop}" x2="${xCur.toFixed(1)}" y2="${yTop + rowH}" stroke="#181a1f" stroke-width="1.2" stroke-dasharray="3,2"/>`;
 
         if (cIdx === 0) {
-          svg += `<text x="${xLeft - 6}" y="${yTop + 10}" text-anchor="end" font-size="9.5" font-family="var(--font-mono)" fill="#494e59">${ymax.toFixed(0)}</text>`;
-          svg += `<text x="${xLeft - 6}" y="${yTop + rowH}" text-anchor="end" font-size="9.5" font-family="var(--font-mono)" fill="#494e59">${Math.max(0, ymin).toFixed(0)}</text>`;
-          svg += `<text x="14" y="${yTop + rowH / 2}" text-anchor="middle" font-size="10" font-weight="600" fill="#181a1f" transform="rotate(-90 14 ${yTop + rowH / 2})">${rm.label}</text>`;
+          svg += `<text x="${xLeft - 7}" y="${(yTop + 9).toFixed(1)}" text-anchor="end" font-size="9.5" font-family="var(--font-mono)" fill="#494e59">${fmtTick(ymax)}</text>`;
+          svg += `<text x="${xLeft - 7}" y="${(yTop + rowH * 0.5 + 3.2).toFixed(1)}" text-anchor="end" font-size="9.5" font-family="var(--font-mono)" fill="#8c8f99">${fmtTick(yMid)}</text>`;
+          svg += `<text x="${xLeft - 7}" y="${(yTop + rowH).toFixed(1)}" text-anchor="end" font-size="9.5" font-family="var(--font-mono)" fill="#494e59">${fmtTick(ymin)}</text>`;
+          const cyLbl = yTop + rowH / 2;
+          svg += `<text transform="translate(22, ${cyLbl.toFixed(1)}) rotate(-90)" text-anchor="middle" font-size="10.2" font-weight="600" fill="#181a1f">` +
+            `<tspan x="0" dy="-5">${rm.l1}</tspan>` +
+            `<tspan x="0" dy="12.5">${rm.l2}</tspan>` +
+            `</text>`;
         }
         if (rIdx === 2) {
-          svg += `<text x="${xLeft + colW / 2}" y="${H - 6}" text-anchor="middle" font-size="10.5" fill="#494e59">Normalized Movement Time (0–100%)</text>`;
+          svg += `<text x="${xLeft + colW / 2}" y="${H - 7}" text-anchor="middle" font-size="10.5" fill="#494e59">Normalized Movement Time (0–100%)</text>`;
         }
       });
     });
@@ -1881,22 +1942,42 @@
   function renderAtlas() {
     const items = STATE.data.items;
     const xKey = STATE.atlasXMode;
-    const xLabel = xKey === "manual_auc" ? "Manual Score Apraxia AUC" : "Cross-Validated Kinematic AUC";
+    const xLabel = xKey === "manual_auc" ? "Standalone Manual-Score Apraxia AUC" : "Standalone Kinematic Apraxia AUC";
 
     // Scatter plot
-    const W = 400, H = 340;
-    const pad = { l: 48, r: 18, t: 18, b: 44 };
+    const W = 400, H = 345;
+    const pad = { l: 48, r: 18, t: 24, b: 44 };
     const pw = W - pad.l - pad.r;
     const ph = H - pad.t - pad.b;
     const xmin = 0.45, xmax = 0.90;
-    const ymax = Math.max(7.0, Math.ceil(Math.max(...items.map((d) => d.weight_full53)) + 0.5));
+    const ymax = Math.max(7.0, Math.ceil(Math.max(...items.map((d) => d.weight_full53)) + 0.8));
     const sx = (v) => pad.l + ((v - xmin) / (xmax - xmin)) * pw;
     const sy = (v) => pad.t + (1 - v / ymax) * ph;
 
-    const rCorr = pearsonR(
-      items.map((d) => d[xKey]),
-      items.map((d) => d.weight_full53)
+    const xs = items.map((d) => d[xKey]);
+    const ys = items.map((d) => d.weight_full53);
+    const rCorr53 = pearsonR(xs, ys);
+    const rCorr41 = pearsonR(
+      xs,
+      items.map((d) => d.weight_train41)
     );
+
+    // Least-squares linear trend line (y on x)
+    const mx = xs.reduce((a, b) => a + b, 0) / xs.length;
+    const my = ys.reduce((a, b) => a + b, 0) / ys.length;
+    let num = 0, den = 0;
+    for (let i = 0; i < xs.length; i++) {
+      num += (xs[i] - mx) * (ys[i] - my);
+      den += (xs[i] - mx) * (xs[i] - mx);
+    }
+    const bSlope = den > 1e-12 ? num / den : 0;
+    const bInter = my - bSlope * mx;
+    const xL = Math.min(...xs), xR = Math.max(...xs);
+
+    const corrBanner =
+      xKey === "manual_auc"
+        ? `Weight vs. Manual AUC: r = ${rCorr53.toFixed(2)} (N=53) · r = ${rCorr41.toFixed(2)} (train n=41)`
+        : `Weight vs. Kinematic AUC: r = ${rCorr53.toFixed(2)} (N=53)`;
 
     let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Item reliability weight versus apraxia AUC">`;
     for (const xv of [0.5, 0.6, 0.7, 0.8, 0.9]) {
@@ -1910,10 +1991,12 @@
       svg += `<text x="${pad.l - 7}" y="${yy + 3.5}" text-anchor="end" font-size="10.5" fill="#494e59">${yv}%</text>`;
     }
     svg += `<line x1="${sx(0.5)}" y1="${pad.t}" x2="${sx(0.5)}" y2="${pad.t + ph}" stroke="#8c8f99" stroke-dasharray="4,3"/>`;
+    // Flat OLS trend line illustrating lack of correlation between standalone AUC and model weight
+    svg += `<line x1="${sx(xL).toFixed(1)}" y1="${sy(bInter + bSlope * xL).toFixed(1)}" x2="${sx(xR).toFixed(1)}" y2="${sy(bInter + bSlope * xR).toFixed(1)}" stroke="#7e6fb2" stroke-width="1.6" stroke-dasharray="5,4" opacity="0.75"/>`;
     svg += `<rect x="${pad.l}" y="${pad.t}" width="${pw}" height="${ph}" fill="none" stroke="#333740"/>`;
     svg += `<text x="${pad.l + pw / 2}" y="${H - 8}" text-anchor="middle" font-size="11.5" font-weight="600" fill="#181a1f">${xLabel}</text>`;
-    svg += `<text x="14" y="${pad.t + ph / 2}" text-anchor="middle" font-size="11.5" font-weight="600" fill="#181a1f" transform="rotate(-90 14 ${pad.t + ph / 2})">Learned Reliability Weight (%)</text>`;
-    svg += `<text x="${pad.l + 8}" y="${pad.t + 16}" font-size="10.5" font-family="var(--font-mono)" fill="#494e59">r = ${rCorr.toFixed(2)}</text>`;
+    svg += `<text x="14" y="${pad.t + ph / 2}" text-anchor="middle" font-size="11.5" font-weight="600" fill="#181a1f" transform="rotate(-90 14 ${pad.t + ph / 2})">Learned Model Weight (%)</text>`;
+    svg += `<text x="${pad.l}" y="${pad.t - 7}" font-size="9.6" font-family="var(--font-mono)" font-weight="600" fill="#464b56">${corrBanner}</text>`;
 
     for (const it of items) {
       const cx = sx(clip(it[xKey], xmin, xmax));
@@ -2403,7 +2486,7 @@
       figImg.src = `figures/fig${num}.png`;
       figImg.alt = `Manuscript Figure ${num}`;
     }
-    setFigSrc(4);
+    setFigSrc(1);
 
     document.querySelectorAll("[data-fig]").forEach((btn) => {
       btn.addEventListener("click", () => {
