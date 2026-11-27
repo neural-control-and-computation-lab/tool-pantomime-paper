@@ -7,6 +7,7 @@
   "use strict";
 
   const ALPHA_STEPS = [0.5, 1.0, 2.0, 10.0, 25.0, 50.0, 100.0];
+  const CLINICAL_CUTOFF = 2.52;
 
   // High-yield 12-item compact battery combining strong apraxia discrimination,
   // reliable kinematic predictability, and diverse mechanical demands (Discussion)
@@ -37,10 +38,12 @@
 
   const STATE = {
     data: null,
+    fullTrueByPid: {},
     split: "full53", // "full53" | "train41" | "test12"
+    classifyIncludeControls: false, // false = Stroke only (Paper), true = All (+Controls)
     blendItemWeight: 0.5, // 0 = 100% Participant, 0.5 = 50/50, 1 = 100% Item
     alpha: 10.0,
-    cutoff: 2.52,
+    cutoff: CLINICAL_CUTOFF, // Decision threshold applied to predicted scores
     activeFeatures: new Set(),
     activeItems: new Set(),
     selectedParticipant: "ST067",
@@ -323,8 +326,29 @@
     return x;
   }
 
-  /** Fit a single BlendModel fold on active trials/features and return model parameters. */
-  function fitBlendFold(trainIdx, allTrials, featIdx, alpha) {
+  /** Compute exact double-precision full-battery manual praxis score per participant. */
+  function computeFullTrueByPid(allTrials) {
+    const acc = new Map();
+    const cnt = new Map();
+    for (let r = 0; r < allTrials.total.length; r++) {
+      const pid = allTrials.participant[r];
+      acc.set(pid, (acc.get(pid) || 0.0) + allTrials.total[r]);
+      cnt.set(pid, (cnt.get(pid) || 0) + 1);
+    }
+    const out = {};
+    for (const [pid, s] of acc.entries()) {
+      out[pid] = s / cnt.get(pid);
+    }
+    return out;
+  }
+
+  /**
+   * Fit a single BlendModel fold on active trials/features and return model parameters.
+   * When `fullTrueMap` is provided on a reduced tool subset (`!isFullBattery`),
+   * participant-level targets stay anchored to each participant's gold-standard
+   * 39-item clinical praxis score (`0-3`, cut-off `2.52`).
+   */
+  function fitBlendFold(trainIdx, allTrials, featIdx, alpha, fullTrueMap = null, isFullBattery = true) {
     const p = featIdx.length;
     const nTr = trainIdx.length;
     let ySum = 0.0;
@@ -394,7 +418,10 @@
     }
 
     // Predict training trials for bias_factor optimization
+    const useGoldTarget = Boolean(fullTrueMap && !isFullBattery);
     const partLoio = [];
+    let wPredAcc = 0.0;
+    let goldAcc = 0.0;
     for (const [pid, rList] of byPart.entries()) {
       let wSum = 0.0;
       let wpSum = 0.0;
@@ -418,18 +445,25 @@
         wSum += w;
         tSum += allTrials.total[r];
       }
+      const wPred = wpSum / (wSum || 1.0);
+      const tMean = useGoldTarget && fullTrueMap[pid] !== undefined ? fullTrueMap[pid] : tSum / rList.length;
+      wPredAcc += wPred;
+      goldAcc += tMean;
       partLoio.push({
         pid,
-        weightedPred: wpSum / (wSum || 1.0),
-        trueMean: tSum / rList.length,
+        weightedPred: wPred,
+        trueMean: tMean,
       });
     }
+
+    const loioCenterIn = useGoldTarget ? wPredAcc / Math.max(1, partLoio.length) : globalMean;
+    const loioCenterOut = useGoldTarget ? goldAcc / Math.max(1, partLoio.length) : globalMean;
 
     const biasFactor = minimizeScalarBounded((bias) => {
       let errSq = 0.0;
       for (let i = 0; i < partLoio.length; i++) {
         const d = partLoio[i];
-        const pr = clip(globalMean + (d.weightedPred - globalMean) * (1.0 + bias), 0.0, 3.0);
+        const pr = clip(loioCenterOut + (d.weightedPred - loioCenterIn) * (1.0 + bias), 0.0, 3.0);
         const df = pr - d.trueMean;
         errSq += df * df;
       }
@@ -456,7 +490,7 @@
         const srcRow = allTrials.X[r];
         for (let j = 0; j < p; j++) Xparts[off + j] += srcRow[featIdx[j]];
       }
-      yparts[idxP] = yAcc / m;
+      yparts[idxP] = useGoldTarget && fullTrueMap[pid] !== undefined ? fullTrueMap[pid] : yAcc / m;
       for (let j = 0; j < p; j++) Xparts[off + j] /= m;
 
       for (let i = 0; i < m; i++) {
@@ -474,13 +508,13 @@
     const directScaler = fitStandardScaler(Xparts, nParts, p2);
     const directModel = fitRidge(directScaler.Xs, yparts, nParts, p2, alpha);
 
-    // Store training-fold loio & direct predictions so calibration can be evaluated instantly for ANY blend weight!
+    // Store training-fold loio & direct predictions so calibration can be evaluated instantly for ANY blend weight
     const trainLoioByPid = new Map();
     for (let i = 0; i < partLoio.length; i++) {
       const d = partLoio[i];
       trainLoioByPid.set(
         d.pid,
-        clip(globalMean + (d.weightedPred - globalMean) * (1.0 + biasFactor), 0.0, 3.0)
+        clip(loioCenterOut + (d.weightedPred - loioCenterIn) * (1.0 + biasFactor), 0.0, 3.0)
       );
     }
 
@@ -498,6 +532,8 @@
       p,
       featIdx,
       globalMean,
+      loioCenterIn,
+      loioCenterOut,
       biasFactor,
       itemModels,
       itemScalers,
@@ -523,6 +559,9 @@
       if (!byPart.has(pid)) byPart.set(pid, []);
       byPart.get(pid).push(r);
     }
+
+    const cIn = mdl.loioCenterIn !== undefined ? mdl.loioCenterIn : mdl.globalMean;
+    const cOut = mdl.loioCenterOut !== undefined ? mdl.loioCenterOut : mdl.globalMean;
 
     const out = {};
     for (const [pid, rList] of byPart.entries()) {
@@ -570,7 +609,7 @@
       for (let j = 0; j < p; j++) agg[p + j] = Math.sqrt(agg[p + j] / m);
 
       const rawItem = wpSum / (wSum || 1.0);
-      const loioPred = clip(mdl.globalMean + (rawItem - mdl.globalMean) * (1.0 + mdl.biasFactor), 0.0, 3.0);
+      const loioPred = clip(cOut + (rawItem - cIn) * (1.0 + mdl.biasFactor), 0.0, 3.0);
 
       let dirRaw = mdl.directModel.intercept;
       const featContrib = new Float64Array(46);
@@ -597,16 +636,31 @@
     return out;
   }
 
-  /** Apply linear variance-matching calibration for any blend weight `bw` (0..1) in < 0.2 ms. */
+  /**
+   * Combine pathways for any blend weight `bw` (0..1).
+   * Variance attenuation from averaging two imperfectly correlated pathways is
+   * proportional to `bw * (1 - bw)`. Weighting eqn. 6 variance-matching calibration
+   * by `4 * bw * (1 - bw)` ensures:
+   *   - `bw = 0.0` (Participant only): exact match to `partPred` (`fo.direct`)
+   *   - `bw = 0.5` (50/50 blend):      exact match to manuscript eqn. 6
+   *   - `bw = 1.0` (Item only):        exact match to `itemPred` (`fo.loio`)
+   *   - `0 < bw < 1`:                  smooth interpolation with zero endpoint jump.
+   */
   function combineWithCalibration(foldOutputs, trueByPid, bw) {
     const partPred = {};
     const itemPred = {};
     const blendPred = {};
+    const calWeight = 4.0 * bw * (1.0 - bw);
 
     for (const pid of Object.keys(foldOutputs)) {
       const fo = foldOutputs[pid];
       partPred[pid] = fo.direct;
       itemPred[pid] = fo.loio;
+
+      if (calWeight <= 1e-12) {
+        blendPred[pid] = bw <= 0.5 ? fo.direct : fo.loio;
+        continue;
+      }
 
       const n = fo.trainTrueArr.length;
       let mTrue = 0.0;
@@ -638,7 +692,8 @@
         intercept = mTrue - slope * mBlend;
       }
       const raw = bw * fo.loio + (1.0 - bw) * fo.direct;
-      blendPred[pid] = clip(slope * raw + intercept, 0.0, 3.0);
+      const cal = slope * raw + intercept;
+      blendPred[pid] = clip((1.0 - calWeight) * raw + calWeight * cal, 0.0, 3.0);
     }
     return { partPred, itemPred, blendPred, trueByPid };
   }
@@ -648,6 +703,7 @@
     const t0 = performance.now();
     const featIdx = Array.from(STATE.activeFeatures).sort((a, b) => a - b);
     const itemSet = STATE.activeItems;
+    const isFullBattery = itemSet.size === STATE.data.items.length;
     const key = `${STATE.split}|${STATE.alpha}|${featIdx.join(",")}|${Array.from(itemSet).sort((a, b) => a - b).join(",")}`;
 
     let cached = STATE.pathwayCache.get(key);
@@ -655,26 +711,18 @@
       const allTrials = STATE.data.trials;
       const testSet = new Set(STATE.data.test_participants);
       const nRows = allTrials.total.length;
-
-      // True score per participant is defined on the selected tool battery (or full battery if participant missed all selected tools)
-      const fullTrueByPid = {};
-      for (const p of STATE.data.participants) fullTrueByPid[p.id] = p.true_score;
+      const fullTrueByPid = STATE.fullTrueByPid;
 
       const filteredIdx = [];
-      const partTrialScores = new Map();
+      const activePidsInBattery = new Set();
       for (let r = 0; r < nRows; r++) {
         if (!itemSet.has(allTrials.item[r])) continue;
         const pid = allTrials.participant[r];
         if (STATE.split === "train41" && testSet.has(pid)) continue;
         filteredIdx.push(r);
-        if (!partTrialScores.has(pid)) partTrialScores.set(pid, []);
-        partTrialScores.get(pid).push(allTrials.total[r]);
-      }
-
-      const trueByPid = {};
-      for (const [pid, arr] of partTrialScores.entries()) {
-        if (STATE.split === "test12" && !testSet.has(pid)) continue;
-        trueByPid[pid] = arr.reduce((a, b) => a + b, 0) / arr.length;
+        if (STATE.split !== "test12" || testSet.has(pid)) {
+          activePidsInBattery.add(pid);
+        }
       }
 
       const foldOutputs = {};
@@ -690,7 +738,7 @@
           if (testSet.has(allTrials.participant[r])) teIdx.push(r);
           else trIdx.push(r);
         }
-        const mdl = fitBlendFold(trIdx, allTrials, featIdx, STATE.alpha);
+        const mdl = fitBlendFold(trIdx, allTrials, featIdx, STATE.alpha, fullTrueByPid, isFullBattery);
         Object.assign(foldOutputs, predictFoldParticipants(mdl, teIdx, allTrials));
         for (let j = 0; j < featIdx.length; j++) {
           const f = featIdx[j];
@@ -701,7 +749,7 @@
         }
         nModels = 1;
       } else {
-        const evalPids = Object.keys(trueByPid).sort();
+        const evalPids = Array.from(activePidsInBattery).sort();
         for (let fIdx = 0; fIdx < evalPids.length; fIdx++) {
           const holdPid = evalPids[fIdx];
           const trIdx = [];
@@ -712,7 +760,7 @@
             else trIdx.push(r);
           }
           if (hoIdx.length === 0 || trIdx.length < 15) continue;
-          const mdl = fitBlendFold(trIdx, allTrials, featIdx, STATE.alpha);
+          const mdl = fitBlendFold(trIdx, allTrials, featIdx, STATE.alpha, fullTrueByPid, isFullBattery);
           Object.assign(foldOutputs, predictFoldParticipants(mdl, hoIdx, allTrials));
           for (let j = 0; j < featIdx.length; j++) {
             const f = featIdx[j];
@@ -723,6 +771,12 @@
           }
           nModels++;
         }
+      }
+
+      // Ground-truth praxis score is always each participant's canonical 39-item manual score
+      const trueByPid = {};
+      for (const pid of Object.keys(foldOutputs)) {
+        trueByPid[pid] = fullTrueByPid[pid];
       }
 
       const relWeightPct = new Float64Array(46);
@@ -742,8 +796,6 @@
       STATE.pathwayCache.set(key, cached);
     }
 
-    // Note: keep canonical manual apraxia score (`fullTrueByPid`) when all 39 items are active,
-    // and battery-specific manual score when testing reduced tool batteries (matching clinical screening!).
     const combined = combineWithCalibration(cached.foldOutputs, cached.trueByPid, STATE.blendItemWeight);
     const elapsedMs = performance.now() - t0;
 
@@ -821,7 +873,17 @@
     return { auc, curve };
   }
 
-  function computeMetrics(predMap, trueMap, cutoff) {
+  /**
+   * Compute continuous agreement (across all `pids`) and binary apraxia classification
+   * metrics at `decisionCutoff`, keeping ground-truth clinical apraxia fixed at
+   * `!isCtrl && trueMap[p] < CLINICAL_CUTOFF` (`2.52`).
+   *
+   * When `includeControls === false` (Paper default), binary classification (`AUC`,
+   * `Sensitivity`, `Specificity`, `Confusion Matrix`) is evaluated over stroke patients
+   * (`ST*`) only. When `includeControls === true`, healthy controls (`CL*`, all true
+   * non-apraxic) are included alongside stroke patients without apraxia.
+   */
+  function computeMetrics(predMap, trueMap, decisionCutoff = CLINICAL_CUTOFF, includeControls = false) {
     const pids = Object.keys(predMap).sort();
     const n = pids.length;
     const pArr = pids.map((k) => predMap[k]);
@@ -838,16 +900,26 @@
     const mae = absErr / Math.max(1, n);
     const rmse = Math.sqrt(sqErr / Math.max(1, n));
 
-    const strokePids = pids.filter((k) => k.startsWith("ST"));
-    const labels = strokePids.map((k) => (trueMap[k] < cutoff ? 1 : 0));
-    const negPreds = strokePids.map((k) => -predMap[k]);
+    let nControls = 0;
+    let ctrlFp = 0;
+    for (let i = 0; i < n; i++) {
+      const p = pids[i];
+      if (p.startsWith("CL")) {
+        nControls++;
+        if (predMap[p] < decisionCutoff) ctrlFp++;
+      }
+    }
+
+    const evalPids = includeControls ? pids : pids.filter((k) => k.startsWith("ST"));
+    const labels = evalPids.map((k) => (!k.startsWith("CL") && trueMap[k] < CLINICAL_CUTOFF ? 1 : 0));
+    const negPreds = evalPids.map((k) => -predMap[k]);
     const { auc, curve } = computeRocAndAuc(labels, negPreds);
 
     let tp = 0, fn = 0, tn = 0, fp = 0;
-    for (let i = 0; i < strokePids.length; i++) {
-      const p = strokePids[i];
-      const tAp = trueMap[p] < cutoff;
-      const pAp = predMap[p] < cutoff;
+    for (let i = 0; i < evalPids.length; i++) {
+      const p = evalPids[i];
+      const tAp = !p.startsWith("CL") && trueMap[p] < CLINICAL_CUTOFF;
+      const pAp = predMap[p] < decisionCutoff;
       if (tAp && pAp) tp++;
       else if (tAp && !pAp) fn++;
       else if (!tAp && !pAp) tn++;
@@ -856,7 +928,25 @@
     const sens = tp + fn > 0 ? tp / (tp + fn) : 0;
     const spec = tn + fp > 0 ? tn / (tn + fp) : 0;
 
-    return { n, r, rho, mae, rmse, auc, curve, tp, fn, tn, fp, sens, spec };
+    return {
+      n,
+      nClassEval: evalPids.length,
+      nControls,
+      ctrlFp,
+      includeControls,
+      r,
+      rho,
+      mae,
+      rmse,
+      auc,
+      curve,
+      tp,
+      fn,
+      tn,
+      fp,
+      sens,
+      spec,
+    };
   }
 
   // ========================================================================
@@ -903,7 +993,7 @@
     const pw = W - pad.l - pad.r;
     const ph = H - pad.t - pad.b;
 
-    const vals = [];
+    const vals = [CLINICAL_CUTOFF, cutoff];
     for (const p of pids) {
       vals.push(res.blendPred[p], res.trueByPid[p]);
     }
@@ -912,7 +1002,8 @@
     const sx = (v) => pad.l + ((v - mn) / (mx - mn)) * pw;
     const sy = (v) => pad.t + (1 - (v - mn) / (mx - mn)) * ph;
 
-    const cx = sx(clip(cutoff, mn, mx));
+    // Vertical reference = fixed clinical apraxia diagnosis (2.52); Horizontal = model decision cut-off
+    const cx = sx(clip(CLINICAL_CUTOFF, mn, mx));
     const cy = sy(clip(cutoff, mn, mx));
 
     const ticks = [];
@@ -921,7 +1012,7 @@
     }
 
     let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="True versus predicted praxis score scatter plot">`;
-    // Quadrant fills
+    // Quadrant fills (True Positive bottom-left, True Negative top-right)
     svg += `<rect x="${pad.l}" y="${cy}" width="${Math.max(0, cx - pad.l)}" height="${Math.max(0, pad.t + ph - cy)}" fill="#d32f2f" fill-opacity="0.085"/>`;
     svg += `<rect x="${cx}" y="${pad.t}" width="${Math.max(0, pad.l + pw - cx)}" height="${Math.max(0, cy - pad.t)}" fill="#1976d2" fill-opacity="0.085"/>`;
 
@@ -936,7 +1027,10 @@
 
     svg += `<line x1="${sx(mn)}" y1="${sy(mn)}" x2="${sx(mx)}" y2="${sy(mx)}" stroke="#8c8f99" stroke-width="1.4" stroke-dasharray="5,4"/>`;
     svg += `<line x1="${cx}" y1="${pad.t}" x2="${cx}" y2="${pad.t + ph}" stroke="#595e6b" stroke-width="1.2" stroke-dasharray="4,3"/>`;
-    svg += `<line x1="${pad.l}" y1="${cy}" x2="${pad.l + pw}" y2="${cy}" stroke="#595e6b" stroke-width="1.2" stroke-dasharray="4,3"/>`;
+    svg += `<line x1="${pad.l}" y1="${cy}" x2="${pad.l + pw}" y2="${cy}" stroke="${Math.abs(cutoff - CLINICAL_CUTOFF) >= 0.005 ? "#0a1f4d" : "#595e6b"}" stroke-width="1.3" stroke-dasharray="4,3"/>`;
+    if (Math.abs(cutoff - CLINICAL_CUTOFF) >= 0.005) {
+      svg += `<text x="${pad.l + pw - 5}" y="${Math.max(pad.t + 12, cy - 4)}" text-anchor="end" font-size="9.5" font-family="var(--font-mono)" font-weight="600" fill="#0a1f4d" stroke="#ffffff" stroke-width="2.5" paint-order="stroke">cut-off ${cutoff.toFixed(2)}</text>`;
+    }
 
     svg += `<text x="${pad.l + 8}" y="${pad.t + ph - 10}" font-size="11.5" font-style="italic" font-weight="700" fill="#7f0000">With Apraxia</text>`;
     svg += `<text x="${pad.l + pw - 8}" y="${pad.t + 18}" text-anchor="end" font-size="11.5" font-style="italic" font-weight="700" fill="#0a2e5c">Without Apraxia</text>`;
@@ -946,15 +1040,17 @@
     svg += `<text x="${pad.l + pw / 2}" y="${H - 8}" text-anchor="middle" font-size="12.5" font-weight="600" fill="#181a1f">Manually Coded Praxis Score (0–3)</text>`;
     svg += `<text x="15" y="${pad.t + ph / 2}" text-anchor="middle" font-size="12.5" font-weight="600" fill="#181a1f" transform="rotate(-90 15 ${pad.t + ph / 2})">Predicted Praxis Score (0–3)</text>`;
 
-    // Points
+    // Points: mark ANY participant (including controls) whose predicted side of `cutoff` disagrees with true status
     for (const pid of pids) {
       const tr = res.trueByPid[pid];
       const pr = res.blendPred[pid];
       const px = sx(tr);
       const py = sy(pr);
       const isCtrl = pid.startsWith("CL");
-      const color = isCtrl ? "#0a1f4d" : tr < cutoff ? "#d32f2f" : "#1976d2";
-      const mis = !isCtrl && (tr < cutoff) !== (pr < cutoff);
+      const trueAp = !isCtrl && tr < CLINICAL_CUTOFF;
+      const predAp = pr < cutoff;
+      const color = isCtrl ? "#0a1f4d" : trueAp ? "#d32f2f" : "#1976d2";
+      const mis = trueAp !== predAp;
       const isSel = pid === STATE.selectedParticipant;
 
       if (isSel) {
@@ -972,7 +1068,7 @@
         svg += `<circle class="pt-node" data-pid="${pid}" cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="5.8" fill="${color}" fill-opacity="0.9" stroke="#181a1f" stroke-width="1.1" style="cursor:pointer;"/>`;
       }
 
-      const showTestLabel = STATE.split === "test12" && !isCtrl && tr < cutoff;
+      const showTestLabel = STATE.split === "test12" && trueAp;
       if (isSel || showTestLabel) {
         const placeLeft = px > pad.l + pw * 0.72;
         const lx = placeLeft ? px - 10 : px + 10;
@@ -990,17 +1086,33 @@
         const pr = res.blendPred[pid];
         const pt = res.partPred[pid];
         const it = res.itemPred[pid];
-        const grp = pid.startsWith("CL")
+        const isCtrl = pid.startsWith("CL");
+        const trueAp = !isCtrl && tr < CLINICAL_CUTOFF;
+        const predAp = pr < cutoff;
+        const grp = isCtrl
           ? "Healthy control"
-          : tr < cutoff
+          : trueAp
           ? "Stroke: with apraxia"
           : "Stroke: without apraxia";
+        let statusLine = "";
+        if (trueAp === predAp) {
+          statusLine = `<span style="color:#86efac;">Correctly classified (${predAp ? "with" : "without"} apraxia at ${cutoff.toFixed(2)})</span>`;
+        } else if (isCtrl && predAp) {
+          statusLine = STATE.classifyIncludeControls
+            ? `<span style="color:#fca5a5;">False positive: control predicted &lt; ${cutoff.toFixed(2)} (counted in Specificity)</span>`
+            : `<span style="color:#fde68a;">Predicted &lt; ${cutoff.toFixed(2)} (marked &times;; excluded from stroke-only Specificity)</span>`;
+        } else if (trueAp && !predAp) {
+          statusLine = `<span style="color:#fca5a5;">False negative: predicted &ge; ${cutoff.toFixed(2)}</span>`;
+        } else {
+          statusLine = `<span style="color:#fca5a5;">False positive: predicted &lt; ${cutoff.toFixed(2)}</span>`;
+        }
         showTooltip(
           evt,
           `<strong>${pid}</strong> (${grp})<br/>` +
             `Manual score: <strong>${tr.toFixed(3)}</strong><br/>` +
             `Blended pred: <strong>${pr.toFixed(3)}</strong> (err ${(pr - tr >= 0 ? "+" : "") + (pr - tr).toFixed(3)})<br/>` +
             `Part. pathway: ${pt.toFixed(3)} &middot; Item pathway: ${it.toFixed(3)}<br/>` +
+            `${statusLine}<br/>` +
             `<span style="color:#cbd5e1;">Click to inspect feature &amp; tool contributions</span>`
         );
       });
@@ -1022,9 +1134,9 @@
     const ph = H - pad.t - pad.b;
 
     const rows = [
-      { label: "Participant", m: mPart },
-      { label: "Item", m: mItem },
-      { label: "Blended", m: mBlend },
+      { label: "Participant", desc: "Participant-level ridge on cross-tool mean & SD", m: mPart },
+      { label: "Item", desc: "Reliability-weighted item-level ridge models", m: mItem },
+      { label: "Blended", desc: "Active pathway blend", m: mBlend },
     ];
 
     let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Pathway performance comparison">`;
@@ -1044,12 +1156,15 @@
       const ha = (aVal / 1.08) * ph;
       const yBase = pad.t + ph;
 
+      svg += `<g class="pw-col" data-pidx="${idx}" style="cursor:pointer;">`;
+      svg += `<rect x="${pad.l + colW * idx}" y="${pad.t}" width="${colW}" height="${ph + 36}" fill="transparent"/>`;
       svg += `<rect x="${cx - barW - 2}" y="${yBase - hr}" width="${barW}" height="${hr}" fill="#4a4e58" rx="2"/>`;
       svg += `<rect x="${cx + 2}" y="${yBase - ha}" width="${barW}" height="${ha}" fill="#b8bcc6" rx="2"/>`;
       svg += `<text x="${cx - barW / 2 - 2}" y="${yBase - hr - 4}" text-anchor="middle" font-size="10" font-family="var(--font-mono)" fill="#181a1f">${row.m.r.toFixed(2)}</text>`;
       svg += `<text x="${cx + barW / 2 + 2}" y="${yBase - ha - 4}" text-anchor="middle" font-size="10" font-family="var(--font-mono)" fill="#181a1f">${row.m.auc.toFixed(2)}</text>`;
       svg += `<text x="${cx}" y="${yBase + 16}" text-anchor="middle" font-size="11" font-weight="600" fill="#181a1f">${row.label}</text>`;
       svg += `<text x="${cx}" y="${yBase + 30}" text-anchor="middle" font-size="9.5" font-family="var(--font-mono)" fill="#6e7482">MAE ${row.m.mae.toFixed(3)}</text>`;
+      svg += `</g>`;
     });
 
     svg += `<line x1="${pad.l}" y1="${pad.t}" x2="${pad.l}" y2="${pad.t + ph}" stroke="#333740" stroke-width="1.1"/>`;
@@ -1061,29 +1176,60 @@
     svg += `<text x="${W - 73}" y="12" font-size="10" fill="#181a1f">AUC</text>`;
     svg += `</svg>`;
     container.innerHTML = svg;
+
+    container.querySelectorAll(".pw-col").forEach((el) => {
+      const row = rows[Number(el.getAttribute("data-pidx"))];
+      el.addEventListener("mousemove", (evt) => {
+        const m = row.m;
+        showTooltip(
+          evt,
+          `<strong>${row.label} Pathway</strong><br/>` +
+            `<span style="color:#cbd5e1;">${row.desc}</span><br/>` +
+            `Pearson <em>r</em> = <strong>${m.r.toFixed(3)}</strong> (&rho; = ${m.rho.toFixed(3)})<br/>` +
+            `MAE = <strong>${m.mae.toFixed(3)}</strong> &middot; AUC = <strong>${m.auc.toFixed(3)}</strong><br/>` +
+            `Sens = <strong>${m.sens.toFixed(2)}</strong> (${m.tp}/${m.tp + m.fn}) &middot; Spec = <strong>${m.spec.toFixed(2)}</strong> (${m.tn}/${m.tn + m.fp})`
+        );
+      });
+      el.addEventListener("mouseleave", hideTooltip);
+    });
   }
 
   function renderConfusionAndRoc(mBlend) {
     const cmWrap = document.getElementById("confusion-container");
     const rocWrap = document.getElementById("roc-container");
 
-    const cells = [
-      [mBlend.fn, mBlend.tn], // row 0: Pred without apraxia; col 0: True with, col 1: True without
-      [mBlend.tp, mBlend.fp], // row 1: Pred with apraxia
+    // Layout mirrors scatter quadrants:
+    //   row 0 (top):    Predicted Without Apraxia (>= cut-off) -> [FN, TN]
+    //   row 1 (bottom): Predicted With Apraxia    (<  cut-off) -> [TP, FP]
+    const cellMeta = [
+      [
+        { v: mBlend.fn, tag: "FN", title: "False Negatives (FN)", detail: "True with apraxia, predicted without apraxia" },
+        { v: mBlend.tn, tag: "TN", title: "True Negatives (TN)", detail: "True without apraxia, predicted without apraxia" },
+      ],
+      [
+        { v: mBlend.tp, tag: "TP", title: "True Positives (TP)", detail: "True with apraxia, predicted with apraxia" },
+        { v: mBlend.fp, tag: "FP", title: "False Positives (FP)", detail: "True without apraxia, predicted with apraxia" },
+      ],
     ];
     const maxC = Math.max(1, mBlend.fn, mBlend.tn, mBlend.tp, mBlend.fp);
 
-    let cmSvg = `<svg viewBox="0 0 185 165" role="img" aria-label="Stroke apraxia confusion matrix">`;
+    let cmSvg = `<svg viewBox="0 0 185 165" role="img" aria-label="Apraxia confusion matrix">`;
     const ox = 46, oy = 14, sz = 54;
     for (let r = 0; r < 2; r++) {
       for (let c = 0; c < 2; c++) {
-        const v = cells[r][c];
+        const cell = cellMeta[r][c];
+        const v = cell.v;
         const t = v / maxC;
         const red = Math.round(255 - t * (255 - 46));
         const grn = Math.round(255 - t * (255 - 125));
         const blu = Math.round(255 - t * (255 - 50));
+        const fg = t > 0.58 ? "#ffffff" : "#181a1f";
+        const tagFg = t > 0.58 ? "rgba(255,255,255,0.82)" : "#6e7482";
+        cmSvg += `<g class="cm-cell" data-r="${r}" data-c="${c}" style="cursor:pointer;">`;
         cmSvg += `<rect x="${ox + c * sz}" y="${oy + r * sz}" width="${sz - 2}" height="${sz - 2}" rx="4" fill="rgb(${red},${grn},${blu})" stroke="#e4e1d9"/>`;
-        cmSvg += `<text x="${ox + c * sz + (sz - 2) / 2}" y="${oy + r * sz + 32}" text-anchor="middle" font-size="15" font-weight="700" font-family="var(--font-mono)" fill="${t > 0.58 ? "#fff" : "#181a1f"}">${v}</text>`;
+        cmSvg += `<text x="${ox + c * sz + 5}" y="${oy + r * sz + 11.5}" font-size="8" font-weight="600" font-family="var(--font-mono)" fill="${tagFg}">${cell.tag}</text>`;
+        cmSvg += `<text x="${ox + c * sz + (sz - 2) / 2}" y="${oy + r * sz + 34}" text-anchor="middle" font-size="15" font-weight="700" font-family="var(--font-mono)" fill="${fg}">${v}</text>`;
+        cmSvg += `</g>`;
       }
     }
     cmSvg += `<text x="${ox + 26}" y="${oy + 2 * sz + 13}" text-anchor="middle" font-size="9.5" fill="#494e59">With</text>`;
@@ -1095,6 +1241,22 @@
     cmSvg += `</svg>`;
     cmWrap.innerHTML = cmSvg;
 
+    cmWrap.querySelectorAll(".cm-cell").forEach((el) => {
+      const r = Number(el.getAttribute("data-r"));
+      const c = Number(el.getAttribute("data-c"));
+      const cell = cellMeta[r][c];
+      el.addEventListener("mousemove", (evt) => {
+        const denom = c === 0 ? mBlend.tp + mBlend.fn : mBlend.tn + mBlend.fp;
+        const pct = denom > 0 ? ((100 * cell.v) / denom).toFixed(1) : "0.0";
+        showTooltip(
+          evt,
+          `<strong>${cell.title}: ${cell.v}</strong> (${pct}% of true ${c === 0 ? "with" : "without"} apraxia)<br/>` +
+            `<span style="color:#cbd5e1;">${cell.detail} at cut-off ${STATE.cutoff.toFixed(2)}</span>`
+        );
+      });
+      el.addEventListener("mouseleave", hideTooltip);
+    });
+
     // ROC Curve
     const rw = 185, rh = 165;
     const rp = { l: 34, r: 12, t: 12, b: 32 };
@@ -1105,20 +1267,33 @@
       .join(" ");
     const polyPts = `${rp.l},${rp.t + ph} ${pts} ${rp.l + pw},${rp.t + ph}`;
 
-    let rocSvg = `<svg viewBox="0 0 ${rw} ${rh}" role="img" aria-label="Stroke ROC curve">`;
+    let rocSvg = `<svg viewBox="0 0 ${rw} ${rh}" role="img" aria-label="Apraxia ROC curve">`;
     rocSvg += `<polygon points="${polyPts}" fill="#1976d2" fill-opacity="0.12"/>`;
     rocSvg += `<line x1="${rp.l}" y1="${rp.t + ph}" x2="${rp.l + pw}" y2="${rp.t}" stroke="#9ea4b0" stroke-dasharray="3,3"/>`;
     rocSvg += `<polyline points="${pts}" fill="none" stroke="#0a1f4d" stroke-width="2.2" stroke-linejoin="round"/>`;
-    // Operating point at active cutoff
+    // Operating point at active decision cut-off
     const fprNow = mBlend.fp + mBlend.tn > 0 ? mBlend.fp / (mBlend.fp + mBlend.tn) : 0;
     const tprNow = mBlend.sens;
-    rocSvg += `<circle cx="${(rp.l + fprNow * pw).toFixed(1)}" cy="${(rp.t + (1 - tprNow) * ph).toFixed(1)}" r="4.2" fill="#d32f2f" stroke="#fff" stroke-width="1.2"/>`;
-    rocSvg += `<rect x="${rp.l}" y="${rp.t}" width="${pw}" height="${ph}" fill="none" stroke="#333740" stroke-width="1"/>`;
+    rocSvg += `<circle class="roc-op-pt" cx="${(rp.l + fprNow * pw).toFixed(1)}" cy="${(rp.t + (1 - tprNow) * ph).toFixed(1)}" r="4.5" fill="#d32f2f" stroke="#fff" stroke-width="1.3" style="cursor:pointer;"/>`;
+    rocSvg += `<rect x="${rp.l}" y="${rp.t}" width="${pw}" height="${ph}" fill="none" stroke="#333740" stroke-width="1" style="pointer-events:none;"/>`;
     rocSvg += `<text x="${rp.l + pw / 2}" y="${rh - 6}" text-anchor="middle" font-size="10" font-weight="600" fill="#181a1f">1 &minus; Specificity</text>`;
     rocSvg += `<text x="10" y="${rp.t + ph / 2}" text-anchor="middle" font-size="10" font-weight="600" fill="#181a1f" transform="rotate(-90 10 ${rp.t + ph / 2})">Sensitivity</text>`;
     rocSvg += `<text x="${rp.l + pw - 5}" y="${rp.t + ph - 8}" text-anchor="end" font-size="10" font-family="var(--font-mono)" font-weight="600" fill="#0a1f4d">AUC ${mBlend.auc.toFixed(3)}</text>`;
     rocSvg += `</svg>`;
     rocWrap.innerHTML = rocSvg;
+
+    const opPt = rocWrap.querySelector(".roc-op-pt");
+    if (opPt) {
+      opPt.addEventListener("mousemove", (evt) => {
+        showTooltip(
+          evt,
+          `<strong>Operating Point (cut-off ${STATE.cutoff.toFixed(2)})</strong><br/>` +
+            `Sensitivity (TPR): <strong>${mBlend.sens.toFixed(2)}</strong> (${mBlend.tp}/${mBlend.tp + mBlend.fn})<br/>` +
+            `Specificity (TNR): <strong>${mBlend.spec.toFixed(2)}</strong> (${mBlend.tn}/${mBlend.tn + mBlend.fp})`
+        );
+      });
+      opPt.addEventListener("mouseleave", hideTooltip);
+    }
   }
 
   function renderFamilyStackedBar(res) {
@@ -1303,7 +1478,7 @@
   function renderParticipantInspector(res) {
     const availPids = Object.keys(res.blendPred).sort((a, b) => res.trueByPid[a] - res.trueByPid[b]);
     if (!availPids.includes(STATE.selectedParticipant)) {
-      const stAprax = availPids.find((p) => p.startsWith("ST") && res.trueByPid[p] < STATE.cutoff);
+      const stAprax = availPids.find((p) => p.startsWith("ST") && res.trueByPid[p] < CLINICAL_CUTOFF);
       STATE.selectedParticipant = stAprax || availPids[0];
     }
     const pid = STATE.selectedParticipant;
@@ -1313,7 +1488,7 @@
       const tr = res.trueByPid[p];
       const grp = p.startsWith("CL")
         ? "Control"
-        : tr < STATE.cutoff
+        : tr < CLINICAL_CUTOFF
         ? "Stroke: with apraxia"
         : "Stroke: without apraxia";
       const opt = document.createElement("option");
@@ -1331,12 +1506,20 @@
     const fo = res.foldOutputs[pid];
     const tr = res.trueByPid[pid];
     const bl = res.blendPred[pid];
+    const isCtrl = pid.startsWith("CL");
+    const trueAp = !isCtrl && tr < CLINICAL_CUTOFF;
+    const predAp = bl < STATE.cutoff;
+    const matchColor = trueAp === predAp ? "var(--c-positive)" : "var(--c-negative)";
+    const classBadge = `<span class="part-stat" style="color:${matchColor}; border-color:${matchColor};">${
+      trueAp === predAp ? "Classified: " : "Misclassified (&times;): "
+    }<strong>${predAp ? "With apraxia" : "Without apraxia"}</strong></span>`;
 
     document.getElementById("participant-summary-pills").innerHTML = `
       <span class="part-stat">Manual: <strong>${tr.toFixed(2)}</strong> (HP ${pMeta.hp.toFixed(2)}, AP ${pMeta.ap.toFixed(2)}, AT ${pMeta.at.toFixed(2)})</span>
       <span class="part-stat">Part.: <strong>${res.partPred[pid].toFixed(2)}</strong></span>
       <span class="part-stat">Item: <strong>${res.itemPred[pid].toFixed(2)}</strong></span>
       <span class="part-stat">Blended: <strong>${bl.toFixed(2)}</strong></span>
+      ${classBadge}
     `;
 
     // Left plot: Top 16 signed feature contributions
@@ -1822,13 +2005,20 @@
     document.querySelectorAll(".preset-bar .preset-chip").forEach((b) => b.classList.remove("active"));
   }
 
-  function applyPreset(presetName) {
+  function applyPreset(presetName, resetScope = false) {
     STATE.blendItemWeight = 0.5;
     STATE.alpha = 10.0;
-    STATE.cutoff = 2.52;
+    STATE.cutoff = CLINICAL_CUTOFF;
     document.getElementById("slider-blend").value = "50";
     document.getElementById("slider-alpha").value = "3";
-    document.getElementById("slider-cutoff").value = "2.52";
+    document.getElementById("slider-cutoff").value = String(CLINICAL_CUTOFF);
+
+    if (resetScope) {
+      STATE.classifyIncludeControls = false;
+      document.querySelectorAll("[data-scope]").forEach((b) =>
+        b.classList.toggle("active", b.getAttribute("data-scope") === "stroke")
+      );
+    }
 
     STATE.activeFeatures = new Set();
     STATE.activeItems = new Set(STATE.data.items.map((it) => it.id));
@@ -1862,6 +2052,7 @@
   function updateAll() {
     const partPct = Math.round((1 - STATE.blendItemWeight) * 100);
     const itemPct = Math.round(STATE.blendItemWeight * 100);
+    const inclCtrl = STATE.classifyIncludeControls;
     document.getElementById("val-blend").textContent = `${partPct}% Part. / ${itemPct}% Item`;
     document.getElementById("val-alpha").textContent = `\u03b1 = ${STATE.alpha}`;
     document.getElementById("val-cutoff").textContent = STATE.cutoff.toFixed(2);
@@ -1871,6 +2062,9 @@
         : STATE.split === "train41"
         ? "41 LOPO folds"
         : "Trained on 41 → 12 unseen";
+    document.getElementById("active-scope-caption").textContent = inclCtrl
+      ? "Controls in Specificity"
+      : "Controls excluded";
 
     const featIdx = Array.from(STATE.activeFeatures).sort((a, b) => a - b);
     const itemArr = Array.from(STATE.activeItems).sort((a, b) => a - b);
@@ -1881,17 +2075,50 @@
       const res = evaluateActivePipeline();
       STATE.lastResult = res;
 
-      const mPart = computeMetrics(res.partPred, res.trueByPid, STATE.cutoff);
-      const mItem = computeMetrics(res.itemPred, res.trueByPid, STATE.cutoff);
-      const mBlend = computeMetrics(res.blendPred, res.trueByPid, STATE.cutoff);
-      const base = STATE.baselineMetrics[STATE.split];
+      // Refresh exact double-precision baseline whenever canonical full-model pipeline is evaluated
+      if (
+        STATE.alpha === 10.0 &&
+        STATE.activeFeatures.size === STATE.data.features.length &&
+        STATE.activeItems.size === STATE.data.items.length
+      ) {
+        const canon50 = combineWithCalibration(res.foldOutputs, res.trueByPid, 0.5);
+        STATE.baselineMetrics[`${STATE.split}|stroke`] = computeMetrics(
+          canon50.blendPred,
+          res.trueByPid,
+          CLINICAL_CUTOFF,
+          false
+        );
+        STATE.baselineMetrics[`${STATE.split}|all`] = computeMetrics(
+          canon50.blendPred,
+          res.trueByPid,
+          CLINICAL_CUTOFF,
+          true
+        );
+      }
+
+      // Ensure selectedParticipant exists in active result before rendering scatter ring
+      const availPids = Object.keys(res.blendPred);
+      if (availPids.length > 0 && !(STATE.selectedParticipant in res.blendPred)) {
+        const stAprax = availPids
+          .sort((a, b) => res.trueByPid[a] - res.trueByPid[b])
+          .find((p) => p.startsWith("ST") && res.trueByPid[p] < CLINICAL_CUTOFF);
+        STATE.selectedParticipant = stAprax || availPids[0];
+      }
+
+      const mPart = computeMetrics(res.partPred, res.trueByPid, STATE.cutoff, inclCtrl);
+      const mItem = computeMetrics(res.itemPred, res.trueByPid, STATE.cutoff, inclCtrl);
+      const mBlend = computeMetrics(res.blendPred, res.trueByPid, STATE.cutoff, inclCtrl);
+      const base = STATE.baselineMetrics[`${STATE.split}|${inclCtrl ? "all" : "stroke"}`];
 
       document.getElementById("kpi-r").textContent = mBlend.r.toFixed(3);
       document.getElementById("sub-r").textContent = `Spearman \u03c1 = ${mBlend.rho.toFixed(3)}`;
       formatDeltaBadge(document.getElementById("delta-r"), mBlend.r, base.r, true, 3);
 
+      document.getElementById("lbl-auc").textContent = inclCtrl ? "Overall AUC" : "Stroke AUC";
       document.getElementById("kpi-auc").textContent = mBlend.auc.toFixed(3);
-      document.getElementById("sub-auc").textContent = `${mBlend.tp + mBlend.fn + mBlend.tn + mBlend.fp} stroke patients`;
+      document.getElementById("sub-auc").textContent = inclCtrl
+        ? `${mBlend.nClassEval} participants (incl. ${mBlend.nControls} ctrl)`
+        : `${mBlend.nClassEval} stroke patients`;
       formatDeltaBadge(document.getElementById("delta-auc"), mBlend.auc, base.auc, true, 3);
 
       document.getElementById("kpi-mae").textContent = mBlend.mae.toFixed(3);
@@ -1899,12 +2126,30 @@
       formatDeltaBadge(document.getElementById("delta-mae"), mBlend.mae, base.mae, false, 3);
 
       document.getElementById("kpi-sens").textContent = mBlend.sens.toFixed(2);
-      document.getElementById("sub-sens").textContent = `${mBlend.tp}/${mBlend.tp + mBlend.fn} with apraxia`;
+      document.getElementById("sub-sens").textContent = inclCtrl
+        ? `${mBlend.tp}/${mBlend.tp + mBlend.fn} with apraxia`
+        : `${mBlend.tp}/${mBlend.tp + mBlend.fn} stroke w/ apraxia`;
       formatDeltaBadge(document.getElementById("delta-sens"), mBlend.sens, base.sens, true, 2);
 
       document.getElementById("kpi-spec").textContent = mBlend.spec.toFixed(2);
-      document.getElementById("sub-spec").textContent = `${mBlend.tn}/${mBlend.tn + mBlend.fp} without apraxia`;
+      if (inclCtrl) {
+        document.getElementById("sub-spec").textContent = `${mBlend.tn}/${mBlend.tn + mBlend.fp} w/o apraxia (incl. ctrl)`;
+      } else if (mBlend.ctrlFp > 0) {
+        document.getElementById("sub-spec").textContent = `${mBlend.tn}/${mBlend.tn + mBlend.fp} stroke (+${mBlend.ctrlFp} ctrl < ${STATE.cutoff.toFixed(2)})`;
+      } else {
+        document.getElementById("sub-spec").textContent = `${mBlend.tn}/${mBlend.tn + mBlend.fp} stroke w/o apraxia`;
+      }
       formatDeltaBadge(document.getElementById("delta-spec"), mBlend.spec, base.spec, true, 2);
+
+      document.getElementById("pathway-hint").innerHTML = inclCtrl
+        ? "Agreement (<em>r</em>), overall AUC (incl. controls), and MAE"
+        : "Agreement (<em>r</em>), stroke AUC, and MAE per pathway";
+      document.getElementById("roc-title").textContent = inclCtrl ? "Overall ROC" : "Stroke ROC";
+      document.getElementById("cm-hint").textContent = inclCtrl
+        ? `At ${STATE.cutoff.toFixed(2)} (incl. ${mBlend.nControls} controls)`
+        : mBlend.ctrlFp > 0
+        ? `Stroke at ${STATE.cutoff.toFixed(2)} (${mBlend.ctrlFp}/${mBlend.nControls} ctrl < cut-off)`
+        : `Stroke only at ${STATE.cutoff.toFixed(2)}`;
 
       document.getElementById("compute-status").textContent =
         `${STATE.activeFeatures.size}/46 features · ${STATE.activeItems.size}/39 tools · computed in ${res.elapsedMs.toFixed(1)} ms`;
@@ -1934,15 +2179,24 @@
   function wireEvents() {
     // Presets
     document.querySelectorAll(".preset-bar .preset-chip").forEach((btn) => {
-      btn.addEventListener("click", () => applyPreset(btn.getAttribute("data-preset")));
+      btn.addEventListener("click", () => applyPreset(btn.getAttribute("data-preset"), false));
     });
-    document.getElementById("btn-reset-model").addEventListener("click", () => applyPreset("full"));
+    document.getElementById("btn-reset-model").addEventListener("click", () => applyPreset("full", true));
 
     // Split buttons
     document.querySelectorAll("[data-split]").forEach((btn) => {
       btn.addEventListener("click", () => {
         STATE.split = btn.getAttribute("data-split");
         document.querySelectorAll("[data-split]").forEach((b) => b.classList.toggle("active", b === btn));
+        updateAll();
+      });
+    });
+
+    // Classification scope buttons (Stroke Only vs All + Controls)
+    document.querySelectorAll("[data-scope]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        STATE.classifyIncludeControls = btn.getAttribute("data-scope") === "all";
+        document.querySelectorAll("[data-scope]").forEach((b) => b.classList.toggle("active", b === btn));
         updateAll();
       });
     });
@@ -2136,11 +2390,14 @@
       });
     });
 
-    // Manuscript Figure switcher (supports both docs/figures/ on GitHub Pages and ../figures/ locally)
+    // Manuscript Figure switcher (supports docs/figures/ on GitHub Pages, ../figures/ locally, and hosted fallback)
     const figImg = document.getElementById("manuscript-fig-img");
     function setFigSrc(num) {
       figImg.onerror = () => {
-        figImg.onerror = null;
+        figImg.onerror = () => {
+          figImg.onerror = null;
+          figImg.src = `https://neural-control-and-computation-lab.github.io/tool-pantomime-paper/figures/fig${num}.png`;
+        };
         figImg.src = `../figures/fig${num}.png`;
       };
       figImg.src = `figures/fig${num}.png`;
@@ -2188,14 +2445,19 @@
 
   async function init() {
     try {
-      const resp = await fetch("data/explorer_data.json");
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      STATE.data = await resp.json();
+      if (typeof window !== "undefined" && window.__INLINE_DATA__) {
+        STATE.data = window.__INLINE_DATA__;
+      } else {
+        const resp = await fetch("data/explorer_data.json");
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        STATE.data = await resp.json();
+      }
+      STATE.fullTrueByPid = computeFullTrueByPid(STATE.data.trials);
 
       STATE.data.features.forEach((f) => STATE.activeFeatures.add(f.index));
       STATE.data.items.forEach((it) => STATE.activeItems.add(it.id));
 
-      // Populate baseline reference metrics (< 1 ms) from precomputed manuscript fits
+      // Seed initial baseline reference metrics (< 1 ms) for both scopes; overwritten with exact double-precision on render
       const baseSpecs = [
         ["full53", "full_lopo"],
         ["train41", "train_lopo"],
@@ -2207,10 +2469,11 @@
         for (const p of STATE.data.participants) {
           if (p[field]) {
             predMap[p.id] = p[field].blend;
-            trueMap[p.id] = p.true_score;
+            trueMap[p.id] = STATE.fullTrueByPid[p.id];
           }
         }
-        STATE.baselineMetrics[spKey] = computeMetrics(predMap, trueMap, 2.52);
+        STATE.baselineMetrics[`${spKey}|stroke`] = computeMetrics(predMap, trueMap, CLINICAL_CUTOFF, false);
+        STATE.baselineMetrics[`${spKey}|all`] = computeMetrics(predMap, trueMap, CLINICAL_CUTOFF, true);
       }
       STATE.split = "full53";
 
@@ -2225,7 +2488,16 @@
 
   // Export testable math engine for automated Node verification
   if (typeof module !== "undefined" && module.exports) {
-    module.exports = { fitRidge, fitStandardScaler, fitBlendFold, predictFoldParticipants, combineWithCalibration, computeMetrics };
+    module.exports = {
+      CLINICAL_CUTOFF,
+      computeFullTrueByPid,
+      fitRidge,
+      fitStandardScaler,
+      fitBlendFold,
+      predictFoldParticipants,
+      combineWithCalibration,
+      computeMetrics,
+    };
   } else {
     init();
   }

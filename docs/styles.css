@@ -431,6 +431,10 @@ main {
   gap: 2px;
 }
 
+.segmented.segmented-2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+
 .seg-btn {
   border: none;
   background: transparent;
